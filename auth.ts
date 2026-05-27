@@ -74,8 +74,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return true;
     },
 
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user?.id) token.id = user.id;
+
+      // Para Google, user.id es el sub de OAuth, no el UUID de Supabase.
+      // Consultamos el UUID real justo después del signIn (account solo existe
+      // en el primer JWT, cuando el usuario acaba de autenticarse).
+      if (account?.provider === "google" && user?.email) {
+        const { data } = await getSupabase()
+          .from("users")
+          .select("id")
+          .eq("email", user.email)
+          .single();
+        if (data?.id) token.id = data.id;
+      }
+
       return token;
     },
 
