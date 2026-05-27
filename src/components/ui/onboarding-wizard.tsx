@@ -6,10 +6,6 @@ import { User, Users, Building, Building2, Video, MapPin, Laptop2, CheckCircle2,
 import { SiSlack, SiGooglecalendar, SiJira, SiNotion } from "react-icons/si";
 import { TbBrandTeams } from "react-icons/tb";
 
-// ── Storage keys ─────────────────────────────────────────────────────────────
-export const WIZARD_DONE_KEY   = "meetbox_wizard_done";
-const WIZARD_DATA_KEY          = "meetbox_wizard_data";
-export const INTEGRATIONS_KEY  = "meetbox_integrations";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 export interface WizardData {
@@ -410,7 +406,6 @@ interface OnboardingWizardProps {
 }
 
 export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
-  const [visible,   setVisible]   = React.useState(false);
   const [loading,   setLoading]   = React.useState(false);
   const [step,      setStep]      = React.useState(0);
   const [dir,       setDir]       = React.useState<"fwd" | "back">("fwd");
@@ -418,10 +413,6 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
   const [data,      setData]      = React.useState<WizardData>({
     orgName: "", teamSize: "", meetingTypes: [], tools: [], customTools: [],
   });
-
-  React.useEffect(() => {
-    if (!localStorage.getItem(WIZARD_DONE_KEY)) setVisible(true);
-  }, []);
 
   function navigate(next: number, direction: "fwd" | "back") {
     if (animating) return;
@@ -431,14 +422,9 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
   }
 
   async function finish() {
-    // Marca inmediatamente en localStorage para que no vuelva a mostrar
-    // aunque el request falle
-    localStorage.setItem(WIZARD_DONE_KEY, "1");
-    localStorage.setItem(WIZARD_DATA_KEY, JSON.stringify(data));
-    localStorage.setItem(INTEGRATIONS_KEY, JSON.stringify([...data.tools, ...data.customTools]));
     setLoading(true);
 
-    // Persiste en DB en paralelo con la animación de carga
+    // Persist to DB in parallel with the loading animation
     fetch("/api/user/profile", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -446,13 +432,11 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
     }).catch((err) => console.error("Error guardando perfil:", err));
 
     setTimeout(() => {
-      setVisible(false);
       onComplete?.();
     }, 3600);
   }
 
-  if (!visible) return null;
-  if (loading)  return <LoadingScreen />;
+  if (loading) return <LoadingScreen />;
 
   const isWelcome = step === TOTAL_QUESTIONS;
   const progress  = isWelcome ? 100 : ((step + 1) / TOTAL_QUESTIONS) * 100;

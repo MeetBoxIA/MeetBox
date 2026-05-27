@@ -34,23 +34,12 @@ const SLIDES = [
   },
 ];
 
-const STORAGE_KEY = "meetbox_onboarding_done";
-
 export default function Onboarding({ onComplete }: { onComplete?: () => void } = {}) {
-  const [visible, setVisible] = React.useState(false);
   const [current, setCurrent] = React.useState(0);
   const [animating, setAnimating] = React.useState(false);
   const [direction, setDirection] = React.useState<"next" | "prev">("next");
 
-  React.useEffect(() => {
-    if (!localStorage.getItem(STORAGE_KEY)) {
-      setVisible(true);
-    }
-  }, []);
-
   function finish() {
-    localStorage.setItem(STORAGE_KEY, "1");
-    setVisible(false);
     onComplete?.();
   }
 
@@ -63,8 +52,6 @@ export default function Onboarding({ onComplete }: { onComplete?: () => void } =
       setAnimating(false);
     }, 280);
   }
-
-  if (!visible) return null;
 
   const slide = SLIDES[current];
   const isLast = current === SLIDES.length - 1;

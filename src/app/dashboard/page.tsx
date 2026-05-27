@@ -17,13 +17,14 @@ export default async function DashboardPage() {
   const { data: profile } = dbUser
     ? await getSupabase()
         .from("user_profiles")
-        .select("onboarded_at, org_name, integrations")
+        .select("onboarded_at, org_name, team_size, meeting_types, integrations")
         .eq("user_id", dbUser.id)
         .maybeSingle()
     : { data: null };
 
-  const serverOnboarded     = !!profile?.onboarded_at;
-  const integrations        = (profile?.integrations as string[] | null) ?? [];
+  const serverOnboarded = !!profile?.onboarded_at;
+  const integrations    = (profile?.integrations  as string[] | null) ?? [];
+  const meetingTypes    = (profile?.meeting_types as string[] | null) ?? [];
 
   return (
     <>
@@ -35,8 +36,10 @@ export default async function DashboardPage() {
           image: session.user!.image ?? null,
         }}
         profile={{
-          orgName:           profile?.org_name ?? null,
-          integrationsCount: integrations.length,
+          orgName:      profile?.org_name  ?? null,
+          teamSize:     profile?.team_size ?? null,
+          meetingTypes,
+          integrations,
         }}
       />
     </>
