@@ -22,6 +22,8 @@ export async function PATCH(
   const patch: Record<string, unknown> = {};
   if (body.title !== undefined) patch.title = String(body.title).trim() || "Sin título";
   if (body.emoji !== undefined) patch.emoji = body.emoji;
+  if (body.trash === true)       patch.deleted_at = new Date().toISOString();
+  else if (body.trash === false) patch.deleted_at = null;
 
   if (Object.keys(patch).length === 0) return NextResponse.json({ error: "Sin cambios" }, { status: 400 });
 

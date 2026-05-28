@@ -191,18 +191,18 @@ function SidebarContent({
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-slate-100 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 bg-[#050040] rounded-lg flex items-center justify-center shrink-0">
+      <div className="px-6 py-6 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 bg-[#050040] rounded-xl flex items-center justify-center shrink-0">
             <svg width="15" height="19" viewBox="0 0 31 40" fill="none">
               <path d="m8.75 11.3 6.75 3.884 6.75-3.885M8.75 34.58v-7.755L2 22.939m27 0-6.75 3.885v7.754M2.405 15.408 15.5 22.954l13.095-7.546M15.5 38V22.939M29 28.915V16.962a2.98 2.98 0 0 0-1.5-2.585L17 8.4a3.01 3.01 0 0 0-3 0L3.5 14.377A3 3 0 0 0 2 16.962v11.953A2.98 2.98 0 0 0 3.5 31.5L14 37.477a3.01 3.01 0 0 0 3 0L27.5 31.5a3 3 0 0 0 1.5-2.585"
                 stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
           <div className="min-w-0">
-            <p className="font-semibold text-[#050040] text-sm leading-tight">MeetBox</p>
+            <p className="font-semibold text-[#050040] text-base leading-tight">MeetBox</p>
             {profile.orgName && (
-              <p className="text-xs text-slate-400 truncate leading-tight mt-0.5">{profile.orgName}</p>
+              <p className="text-sm text-slate-400 truncate leading-tight mt-0.5">{profile.orgName}</p>
             )}
           </div>
         </div>
@@ -214,7 +214,7 @@ function SidebarContent({
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 px-4 py-5 space-y-1 overflow-y-auto">
         {NAV_ITEMS.map(({ id, label, icon: Icon, children }) => {
           const active     = activeNav === id || activeNav.startsWith(id + "-");
           const isExpanded = active && !!children;
@@ -229,20 +229,20 @@ function SidebarContent({
                   }
                 }}
                 className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
+                  "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-base font-medium transition-all",
                   active && !children ? "bg-[#050040] text-white shadow-sm"
                     : active          ? "bg-[#050040]/8 text-[#050040]"
                     :                   "text-slate-500 hover:bg-slate-50 hover:text-slate-800",
                 )}
               >
                 <Icon className={cn(
-                  "w-4 h-4 shrink-0",
+                  "w-5 h-5 shrink-0",
                   active && !children ? "text-white" : active ? "text-[#050040]" : "text-slate-400",
                 )} />
                 <span className="flex-1 text-left">{label}</span>
                 {children
-                  ? <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", isExpanded ? "rotate-0" : "-rotate-90", active ? "text-[#050040]" : "text-slate-400")} />
-                  : active && <ChevronRight className="w-3.5 h-3.5 opacity-70" />
+                  ? <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", isExpanded ? "rotate-0" : "-rotate-90", active ? "text-[#050040]" : "text-slate-400")} />
+                  : active && <ChevronRight className="w-4 h-4 opacity-70" />
                 }
               </button>
 
@@ -255,11 +255,11 @@ function SidebarContent({
                         key={cid}
                         onClick={() => { setActiveNav(cid); onClose?.(); }}
                         className={cn(
-                          "w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-all",
+                          "w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-medium transition-all",
                           ca ? "bg-[#050040] text-white shadow-sm" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800",
                         )}
                       >
-                        <CIcon className={cn("w-3.5 h-3.5 shrink-0", ca ? "text-white" : "text-slate-400")} />
+                        <CIcon className={cn("w-4 h-4 shrink-0", ca ? "text-white" : "text-slate-400")} />
                         {clabel}
                       </button>
                     );
@@ -272,9 +272,9 @@ function SidebarContent({
       </nav>
 
       {/* CTA */}
-      <div className="px-3 pb-3 shrink-0">
-        <button className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 text-sm font-medium hover:border-[#050040]/40 hover:text-[#050040] transition-all group">
-          <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
+      <div className="px-4 pb-4 shrink-0">
+        <button className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 text-base font-medium hover:border-[#050040]/40 hover:text-[#050040] transition-all group">
+          <Plus className="w-5 h-5 group-hover:scale-110 transition-transform" />
           Nueva reunión
         </button>
       </div>
@@ -305,15 +305,15 @@ function Header({ activeNav, user, onMenuClick }: { activeNav: string; user: Use
   const [search, setSearch] = React.useState("");
   const [searchOpen, setSearchOpen] = React.useState(false);
   return (
-    <header className="h-16 bg-white border-b border-slate-100 flex items-center gap-3 px-4 lg:px-6 shrink-0">
+    <header className="h-20 bg-white border-b border-slate-100 flex items-center gap-3 px-5 lg:px-8 shrink-0">
       <button onClick={onMenuClick} className="lg:hidden p-2 rounded-xl hover:bg-slate-50 transition-colors shrink-0">
         <Menu className="w-5 h-5 text-slate-600" />
       </button>
-      <h1 className="text-sm font-semibold text-slate-800 shrink-0 truncate">{SECTION_TITLES[activeNav] ?? "Dashboard"}</h1>
-      <div className="hidden md:flex flex-1 max-w-xs relative">
+      <h1 className="text-base font-semibold text-slate-800 shrink-0 truncate">{SECTION_TITLES[activeNav] ?? "Dashboard"}</h1>
+      <div className="hidden md:flex flex-1 max-w-sm relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
         <input type="text" placeholder="Buscar reuniones..." value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm placeholder:text-slate-400 outline-none focus:border-[#050040]/40 focus:ring-2 focus:ring-[#050040]/8 transition" />
+          className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm placeholder:text-slate-400 outline-none focus:border-[#050040]/40 focus:ring-2 focus:ring-[#050040]/8 transition" />
       </div>
       {searchOpen && (
         <div className="md:hidden flex-1 relative">
@@ -350,12 +350,12 @@ function WelcomeHeader({ user }: { user: User }) {
   return (
     <div className="flex items-start sm:items-center justify-between mb-6 gap-4">
       <div>
-        <p className="text-xs font-medium text-slate-400 mb-0.5">{greeting},</p>
-        <h2 className="text-2xl sm:text-3xl font-bold text-[#050040] leading-tight">{user.name.split(" ")[0]}</h2>
-        <p className="text-sm text-slate-500 mt-1">Tienes 3 reuniones programadas para hoy</p>
+        <p className="text-sm font-medium text-slate-400 mb-0.5">{greeting},</p>
+        <h2 className="text-3xl sm:text-4xl font-bold text-[#050040] leading-tight">{user.name.split(" ")[0]}</h2>
+        <p className="text-base text-slate-500 mt-1">Tienes 3 reuniones programadas para hoy</p>
       </div>
-      <button className="shrink-0 flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-sm font-medium text-slate-600 hover:border-[#050040]/30 hover:text-[#050040] transition-all shadow-sm">
-        <Sparkles className="w-4 h-4 text-[#050040] shrink-0" />
+      <button className="shrink-0 flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 sm:px-5 py-2.5 sm:py-3 text-base font-medium text-slate-600 hover:border-[#050040]/30 hover:text-[#050040] transition-all shadow-sm">
+        <Sparkles className="w-5 h-5 text-[#050040] shrink-0" />
         <span className="hidden sm:inline">Resumen IA</span>
       </button>
     </div>
@@ -367,22 +367,22 @@ function MetricCard({ label, value, trend, trendUp, icon: Icon, iconBg, iconColo
   icon: React.ElementType; iconBg: string; iconColor: string;
 }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
-      <div className="flex items-start justify-between mb-4">
-        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", iconBg)}>
-          <Icon className={cn("w-5 h-5", iconColor)} />
+    <div className="bg-white rounded-2xl border border-slate-100 p-6 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
+      <div className="flex items-start justify-between mb-5">
+        <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center shrink-0", iconBg)}>
+          <Icon className={cn("w-6 h-6", iconColor)} />
         </div>
         <div className={cn(
-          "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full",
+          "flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-full",
           trendUp === undefined ? "bg-slate-50 text-slate-500"
             : trendUp ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600",
         )}>
-          {trendUp !== undefined && (trendUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />)}
+          {trendUp !== undefined && (trendUp ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />)}
           <span className="hidden sm:inline">{trend}</span>
         </div>
       </div>
-      <p className="text-3xl font-bold text-slate-800 mb-1">{value}</p>
-      <p className="text-sm text-slate-500">{label}</p>
+      <p className="text-4xl font-bold text-slate-800 mb-1">{value}</p>
+      <p className="text-base text-slate-500">{label}</p>
     </div>
   );
 }
@@ -390,38 +390,38 @@ function MetricCard({ label, value, trend, trendUp, icon: Icon, iconBg, iconColo
 function RecentMeetings() {
   return (
     <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+      <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
         <div>
-          <h2 className="text-sm font-semibold text-slate-800">Reuniones recientes</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Últimas sesiones registradas</p>
+          <h2 className="text-base font-semibold text-slate-800">Reuniones recientes</h2>
+          <p className="text-sm text-slate-400 mt-0.5">Últimas sesiones registradas</p>
         </div>
-        <button className="text-xs font-semibold text-[#050040] hover:underline flex items-center gap-1 shrink-0">
-          Ver todas <ChevronRight className="w-3.5 h-3.5" />
+        <button className="text-sm font-semibold text-[#050040] hover:underline flex items-center gap-1 shrink-0">
+          Ver todas <ChevronRight className="w-4 h-4" />
         </button>
       </div>
       <div className="divide-y divide-slate-50">
         {RECENT_MEETINGS.map((m) => {
           const s = STATUS_CONFIG[m.status as keyof typeof STATUS_CONFIG];
           return (
-            <div key={m.id} className="flex items-center gap-3 px-4 sm:px-5 py-3.5 hover:bg-slate-50/60 transition-colors group">
-              <div className="w-9 h-9 rounded-xl bg-[#050040]/8 flex items-center justify-center shrink-0">
-                <Mic className="w-4 h-4 text-[#050040]" />
+            <div key={m.id} className="flex items-center gap-3 px-5 sm:px-6 py-4 hover:bg-slate-50/60 transition-colors group">
+              <div className="w-11 h-11 rounded-xl bg-[#050040]/8 flex items-center justify-center shrink-0">
+                <Mic className="w-5 h-5 text-[#050040]" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-800 truncate">{m.title}</p>
+                <p className="text-base font-medium text-slate-800 truncate">{m.title}</p>
                 <div className="flex items-center gap-2 sm:gap-3 mt-0.5">
-                  <span className="flex items-center gap-1 text-xs text-slate-400">
-                    <Calendar className="w-3 h-3 shrink-0" />{m.date}
+                  <span className="flex items-center gap-1 text-sm text-slate-400">
+                    <Calendar className="w-3.5 h-3.5 shrink-0" />{m.date}
                   </span>
-                  <span className="hidden sm:flex items-center gap-1 text-xs text-slate-400">
-                    <Clock className="w-3 h-3 shrink-0" />{m.duration}
+                  <span className="hidden sm:flex items-center gap-1 text-sm text-slate-400">
+                    <Clock className="w-3.5 h-3.5 shrink-0" />{m.duration}
                   </span>
-                  <span className="hidden md:flex items-center gap-1 text-xs text-slate-400">
-                    <Users className="w-3 h-3 shrink-0" />{m.participants}
+                  <span className="hidden md:flex items-center gap-1 text-sm text-slate-400">
+                    <Users className="w-3.5 h-3.5 shrink-0" />{m.participants}
                   </span>
                 </div>
               </div>
-              <span className={cn("text-xs font-medium px-2 sm:px-2.5 py-1 rounded-full border shrink-0", s.className)}>{s.label}</span>
+              <span className={cn("text-sm font-medium px-3 py-1.5 rounded-full border shrink-0", s.className)}>{s.label}</span>
               <button className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-slate-200 shrink-0 hidden sm:block">
                 <MoreHorizontal className="w-4 h-4 text-slate-500" />
               </button>
@@ -436,18 +436,18 @@ function RecentMeetings() {
 function QuickActions() {
   return (
     <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100">
-        <h2 className="text-sm font-semibold text-slate-800">Acciones rápidas</h2>
-        <p className="text-xs text-slate-400 mt-0.5">Próximamente disponible</p>
+      <div className="px-6 py-5 border-b border-slate-100">
+        <h2 className="text-base font-semibold text-slate-800">Acciones rápidas</h2>
+        <p className="text-sm text-slate-400 mt-0.5">Próximamente disponible</p>
       </div>
-      <div className="p-3 grid grid-cols-2 gap-2">
+      <div className="p-4 grid grid-cols-2 gap-2.5">
         {QUICK_ACTIONS.map(({ label, desc, icon: Icon, bg, color }) => (
-          <button key={label} className="flex flex-col items-start gap-2.5 p-3 sm:p-3.5 rounded-xl border border-slate-100 hover:border-slate-200 hover:shadow-sm hover:-translate-y-0.5 transition-all text-left group">
-            <div className={cn("w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform", bg)}>
-              <Icon className={cn("w-4 h-4", color)} />
+          <button key={label} className="flex flex-col items-start gap-3 p-4 rounded-xl border border-slate-100 hover:border-slate-200 hover:shadow-sm hover:-translate-y-0.5 transition-all text-left group">
+            <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform", bg)}>
+              <Icon className={cn("w-5 h-5", color)} />
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-700 leading-tight">{label}</p>
+              <p className="text-sm font-semibold text-slate-700 leading-tight">{label}</p>
               <p className="text-xs text-slate-400 mt-0.5 leading-tight hidden sm:block">{desc}</p>
             </div>
           </button>
@@ -1250,7 +1250,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* Desktop sidebar */}
-      <div className="hidden lg:flex w-64 shrink-0 flex-col border-r border-slate-100">
+      <div className="hidden lg:flex w-72 shrink-0 flex-col border-r border-slate-100">
         <SidebarContent user={user} profile={profile} activeNav={activeNav} setActiveNav={setActiveNav} />
       </div>
 

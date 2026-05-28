@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
     .select("id, notebook_id, title, content, emoji, is_pinned, created_at, updated_at")
     .eq("notebook_id", notebookId)
     .eq("user_id", userId)
+    .is("deleted_at", null)
     .order("is_pinned", { ascending: false })
     .order("updated_at",  { ascending: false });
 
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
   const userId = await resolveUserId(session.user.email);
   if (!userId) return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
 
-  const { notebookId, title = "Sin título", emoji = "📄" } = await req.json().catch(() => ({}));
+  const { notebookId, title = "Sin título", emoji = "📄", content = "" } = await req.json().catch(() => ({}));
   if (!notebookId) return NextResponse.json({ error: "notebookId requerido" }, { status: 400 });
 
   const { data, error } = await getSupabase()
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
       notebook_id: notebookId,
       title:       String(title).trim() || "Sin título",
       emoji,
-      content:     "",
+      content:     String(content),
     })
     .select()
     .single();

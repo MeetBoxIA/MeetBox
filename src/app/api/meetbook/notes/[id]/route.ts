@@ -25,6 +25,8 @@ export async function PATCH(
   if (body.content   !== undefined) patch.content   = body.content;
   if (body.emoji     !== undefined) patch.emoji     = body.emoji;
   if (body.is_pinned !== undefined) patch.is_pinned = Boolean(body.is_pinned);
+  if (body.trash === true)           patch.deleted_at = new Date().toISOString();
+  else if (body.trash === false)     patch.deleted_at = null;
 
   if (Object.keys(patch).length === 0) return NextResponse.json({ error: "Sin cambios" }, { status: 400 });
 
