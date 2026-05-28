@@ -13,7 +13,8 @@ import {
 import { SiSlack, SiGooglecalendar, SiJira, SiNotion } from "react-icons/si";
 import { TbBrandTeams, TbBrandZoom } from "react-icons/tb";
 import { signOut } from "next-auth/react";
-import MeetBookView from "./meetbook-view";
+import MeetBookView      from "./meetbook-view";
+import MeetCalendarView from "./meetcalendar-view";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface User    { name: string; email: string; image: string | null }
@@ -34,7 +35,7 @@ const NAV_ITEMS = [
       { id: "rooms-meetings", label: "Reuniones", icon: Video },
     ],
   },
-  { id: "calendar",     label: "Calendario",   icon: Calendar,  children: null },
+  { id: "meetcalendar", label: "MeetCalendar", icon: Calendar,  children: null },
   { id: "meetbook",     label: "MeetBook",     icon: BookOpen,  children: null },
   { id: "integrations", label: "Integraciones", icon: Puzzle,  children: null },
   {
@@ -52,7 +53,7 @@ const SECTION_TITLES: Record<string, string> = {
   meetings:                "Reuniones",
   rooms:                   "Salas",
   "rooms-meetings":        "Salas · Reuniones",
-  calendar:                "Calendario",
+  meetcalendar:            "MeetCalendar",
   meetbook:                "MeetBook",
   integrations:            "Integraciones",
   "settings-profile":      "Configuración · Perfil",
@@ -1234,7 +1235,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
   function renderContent() {
     switch (activeNav) {
       case "home":                    return <HomeView user={user} profile={profile} />;
-      case "calendar":                return <CalendarView />;
+      case "meetcalendar":            return <MeetCalendarView />;
       case "meetbook":                return <MeetBookView />;
       case "integrations":            return <IntegrationsView profile={profile} onUpdate={handleProfileUpdate} />;
       case "settings-profile":        return <SettingsProfile user={user} profile={profile} onUpdate={handleProfileUpdate} />;
@@ -1269,7 +1270,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
         <Header activeNav={activeNav} user={user} onMenuClick={() => setSidebarOpen(true)} />
         <main className={cn(
           "flex-1 min-h-0",
-          activeNav === "meetbook"
+          (activeNav === "meetbook" || activeNav === "meetcalendar")
             ? "overflow-hidden"
             : "overflow-y-auto p-4 sm:p-6",
         )}>
