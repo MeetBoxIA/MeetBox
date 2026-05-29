@@ -15,6 +15,7 @@ import { TbBrandTeams, TbBrandZoom } from "react-icons/tb";
 import { signOut } from "next-auth/react";
 import MeetBookView      from "./meetbook-view";
 import MeetCalendarView from "./meetcalendar-view";
+import RoomsView        from "./rooms-view";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface User    { name: string; email: string; image: string | null }
@@ -310,7 +311,13 @@ function Header({ activeNav, user, onMenuClick }: { activeNav: string; user: Use
       <button onClick={onMenuClick} className="lg:hidden p-2 rounded-xl hover:bg-slate-50 transition-colors shrink-0">
         <Menu className="w-5 h-5 text-slate-600" />
       </button>
-      <h1 className="text-base font-semibold text-slate-800 shrink-0 truncate">{SECTION_TITLES[activeNav] ?? "Dashboard"}</h1>
+      {/* Title — hidden when search is open on mobile to free space for the avatar */}
+      <h1 className={cn(
+        "text-base font-semibold text-slate-800 min-w-0 truncate",
+        searchOpen ? "hidden md:block" : "block",
+      )}>
+        {SECTION_TITLES[activeNav] ?? "Dashboard"}
+      </h1>
       <div className="hidden md:flex flex-1 max-w-sm relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
         <input type="text" placeholder="Buscar reuniones..." value={search} onChange={(e) => setSearch(e.target.value)}
@@ -324,18 +331,19 @@ function Header({ activeNav, user, onMenuClick }: { activeNav: string; user: Use
             className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm outline-none focus:border-[#050040]/40 transition" />
         </div>
       )}
+      {/* Right side — always shrink-0 so the avatar is never pushed off screen */}
       <div className="flex items-center gap-1.5 ml-auto shrink-0">
         {!searchOpen && (
-          <button onClick={() => setSearchOpen(true)} className="md:hidden p-2 rounded-xl hover:bg-slate-50 transition-colors">
+          <button onClick={() => setSearchOpen(true)} className="md:hidden p-2 rounded-xl hover:bg-slate-50 transition-colors shrink-0">
             <Search className="w-5 h-5 text-slate-500" />
           </button>
         )}
-        <button className="relative p-2 rounded-xl hover:bg-slate-50 transition-colors group">
+        <button className="relative p-2 rounded-xl hover:bg-slate-50 transition-colors group shrink-0">
           <Bell className="w-5 h-5 text-slate-500 group-hover:text-slate-800 transition-colors" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#050040] rounded-full border-2 border-white" />
         </button>
-        <div className="hidden sm:block w-px h-6 bg-slate-200" />
-        <button className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl hover:bg-slate-50 transition-colors">
+        <div className="hidden sm:block w-px h-6 bg-slate-200 shrink-0" />
+        <button className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl hover:bg-slate-50 transition-colors shrink-0">
           <Avatar name={user.name} image={user.image} size="sm" />
           <span className="text-sm font-medium text-slate-700 hidden sm:block">{user.name.split(" ")[0]}</span>
         </button>
@@ -1243,7 +1251,8 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
       case "settings-security":       return <SettingsSecurity />;
       case "settings-account":        return <SettingsAccount user={user} />;
       case "meetings":                return <PlaceholderView title="Reuniones" icon={Video} />;
-      case "rooms-meetings":          return <PlaceholderView title="Salas · Reuniones" icon={DoorOpen} />;
+      case "rooms":                   return <RoomsView />;
+      case "rooms-meetings":          return <RoomsView />;
       default:                        return <HomeView user={user} profile={profile} />;
     }
   }

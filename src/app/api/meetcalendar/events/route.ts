@@ -51,8 +51,9 @@ export async function GET(req: NextRequest) {
   const user = await resolveUser(session.user.email);
   if (!user) return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
 
-  const start = req.nextUrl.searchParams.get("start");
-  const end   = req.nextUrl.searchParams.get("end");
+  const start   = req.nextUrl.searchParams.get("start");
+  const end     = req.nextUrl.searchParams.get("end");
+  const room_id = req.nextUrl.searchParams.get("room_id");
 
   let query = getSupabase()
     .from("calendar_events")
@@ -60,8 +61,9 @@ export async function GET(req: NextRequest) {
     .eq("user_id", user.id)
     .order("start_at", { ascending: true });
 
-  if (start) query = query.gte("start_at", start);
-  if (end)   query = query.lte("start_at", end);
+  if (start)   query = query.gte("start_at", start);
+  if (end)     query = query.lte("start_at", end);
+  if (room_id) query = query.eq("room_id", room_id);
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -81,6 +83,7 @@ export async function POST(req: NextRequest) {
     type = "meeting", start_at, end_at = null,
     all_day = false, color = "#050040",
     notify_email = false, notify_minutes = 15,
+    room_id = null,
   } = body;
 
   if (!title || !start_at) return NextResponse.json({ error: "title y start_at son requeridos" }, { status: 400 });
@@ -108,6 +111,7 @@ export async function POST(req: NextRequest) {
       notify_email,
       notify_minutes,
       google_event_id,
+      room_id: room_id || null,
     })
     .select()
     .single();
