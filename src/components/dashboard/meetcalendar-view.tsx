@@ -1,13 +1,12 @@
 "use client";
 import * as React from "react";
-import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   ChevronLeft, ChevronRight, Plus, X, Clock, MapPin, Bell,
   Trash2, Video, CalendarDays, AlignLeft, Check, RefreshCw,
-  GripVertical, ExternalLink,
+  GripVertical, Share2, Copy, Link2, ExternalLink,
 } from "lucide-react";
-import { SiGooglecalendar } from "react-icons/si";
+import { SiGooglecalendar, SiApple } from "react-icons/si";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type EventType = "meeting" | "event" | "reminder";
@@ -154,14 +153,21 @@ function eventToForm(ev: CalEvent): EventFormData {
     notify_email:   ev.notify_email,
   };
 }
+function localOffsetStr(): string {
+  const off  = -new Date().getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "-";
+  const abs  = Math.abs(off);
+  return `${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
+}
 function formToPayload(f: EventFormData): Omit<CalEvent, "id" | "google_event_id"> {
+  const tz = localOffsetStr();
   const start_at = f.all_day
-    ? `${f.start_date}T00:00:00`
-    : `${f.start_date}T${f.start_time}:00`;
+    ? `${f.start_date}T00:00:00${tz}`
+    : `${f.start_date}T${f.start_time}:00${tz}`;
   const end_at = f.all_day
-    ? `${f.end_date || f.start_date}T23:59:59`
+    ? `${f.end_date || f.start_date}T23:59:59${tz}`
     : f.end_date && f.end_time
-      ? `${f.end_date}T${f.end_time}:00`
+      ? `${f.end_date}T${f.end_time}:00${tz}`
       : null;
   return {
     title:          f.title.trim() || "Sin título",
@@ -211,8 +217,8 @@ function EventModal({ editing, defaults, onSave, onDelete, onClose }: ModalProps
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" style={{ animation: "mcalOverlay 0.18s ease both" }} onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden" style={{ animation: "mcalModal 0.22s cubic-bezier(0.16,1,0.3,1) both" }}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 shrink-0">
           <div className="flex items-center gap-3">
@@ -445,8 +451,8 @@ interface DayPanelProps {
 function DayPanel({ day, events, onClose, onNew, onEdit }: DayPanelProps) {
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm lg:bg-transparent lg:backdrop-blur-none" onClick={onClose} />
-      <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-sm bg-white shadow-2xl flex flex-col border-l border-slate-100 animate-in slide-in-from-right duration-200">
+      <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm lg:bg-transparent lg:backdrop-blur-none" style={{ animation: "mcalOverlay 0.18s ease both" }} onClick={onClose} />
+      <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-sm bg-white shadow-2xl flex flex-col border-l border-slate-100" style={{ animation: "mcalPanel 0.26s cubic-bezier(0.16,1,0.3,1) both" }}>
         {/* Header */}
         <div className="px-5 py-5 border-b border-slate-100 shrink-0">
           <div className="flex items-center justify-between mb-4">
@@ -810,10 +816,172 @@ function MonthView({ year, month, today, events, draggingId, dragOverDate, onDay
   );
 }
 
+// ── ShareModal ────────────────────────────────────────────────────────────────
+function ShareModal({ onClose }: { onClose: () => void }) {
+  const [token,       setToken]       = React.useState<string | null>(null);
+  const [loadingTok,  setLoadingTok]  = React.useState(true);
+  const [fetchError,  setFetchError]  = React.useState<string | null>(null);
+  const [copiedShare, setCopiedShare] = React.useState(false);
+  const [copiedIcal,  setCopiedIcal]  = React.useState(false);
+  const [resetting,   setResetting]   = React.useState(false);
+
+  React.useEffect(() => {
+    fetch("/api/meetcalendar/share")
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((d: { token: string }) => setToken(d.token))
+      .catch((e: Error) => setFetchError(e.message))
+      .finally(() => setLoadingTok(false));
+  }, []);
+
+  const origin   = typeof window !== "undefined" ? window.location.origin : "";
+  const shareUrl = token ? `${origin}/calendar/${token}` : "";
+  const icalUrl  = token ? `${origin}/api/meetcalendar/ical/${token}` : "";
+  const gcalUrl  = icalUrl
+    ? `https://www.google.com/calendar/render?cid=${encodeURIComponent(icalUrl.replace(/^https?/, "webcal"))}`
+    : "#";
+
+  async function copy(text: string, set: (v: boolean) => void) {
+    await navigator.clipboard.writeText(text);
+    set(true); setTimeout(() => set(false), 2000);
+  }
+
+  async function reset() {
+    setResetting(true);
+    try {
+      const r = await fetch("/api/meetcalendar/share", { method: "DELETE" });
+      if (r.ok) { const d = await r.json(); setToken(d.token); }
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        style={{ animation: "mcalOverlay 0.18s ease both" }}
+        onClick={onClose}
+      />
+      <div
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md"
+        style={{ animation: "mcalModal 0.22s cubic-bezier(0.16,1,0.3,1) both" }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#050040]/8 flex items-center justify-center">
+              <Share2 className="w-4 h-4 text-[#050040]" />
+            </div>
+            <h2 className="text-base font-semibold text-slate-800">Compartir calendario</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+            <X className="w-4 h-4 text-slate-500" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5">
+          {loadingTok ? (
+            <div className="flex items-center justify-center py-10">
+              <RefreshCw className="w-5 h-5 text-slate-300 animate-spin" />
+            </div>
+          ) : fetchError ? (
+            <div className="py-8 text-center">
+              <p className="text-sm font-medium text-red-600 mb-1">No se pudo generar el enlace</p>
+              <p className="text-xs text-slate-400">Asegúrate de haber ejecutado la migración SQL en Supabase:</p>
+              <pre className="mt-3 text-left bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-600 overflow-x-auto">
+                {`ALTER TABLE users\nADD COLUMN IF NOT EXISTS\ncalendar_share_token TEXT UNIQUE;`}
+              </pre>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {/* Share URL */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-2">
+                  <Link2 className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />Enlace de vista pública
+                </label>
+                <div className="flex gap-2">
+                  <input readOnly value={shareUrl}
+                    className="flex-1 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 outline-none truncate" />
+                  <button
+                    onClick={() => copy(shareUrl, setCopiedShare)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all shrink-0",
+                      copiedShare
+                        ? "bg-green-50 text-green-700 border-green-200"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50",
+                    )}
+                  >
+                    {copiedShare ? <><Check className="w-3.5 h-3.5" />Copiado</> : <><Copy className="w-3.5 h-3.5" />Copiar</>}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-400 mt-1.5">Cualquiera con este enlace puede ver tu calendario</p>
+              </div>
+
+              {/* iCal URL */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-2">
+                  <RefreshCw className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />URL de suscripción iCal
+                </label>
+                <div className="flex gap-2">
+                  <input readOnly value={icalUrl}
+                    className="flex-1 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 outline-none truncate" />
+                  <button
+                    onClick={() => copy(icalUrl, setCopiedIcal)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all shrink-0",
+                      copiedIcal
+                        ? "bg-green-50 text-green-700 border-green-200"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50",
+                    )}
+                  >
+                    {copiedIcal ? <><Check className="w-3.5 h-3.5" />Copiado</> : <><Copy className="w-3.5 h-3.5" />Copiar</>}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-400 mt-1.5">Pega esta URL en cualquier app para suscribirte</p>
+              </div>
+
+              {/* Quick subscribe */}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <a href={gcalUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:border-[#1A73E8]/40 hover:text-[#1A73E8] transition-all">
+                  <SiGooglecalendar className="w-4 h-4 text-[#1A73E8]" />
+                  Google Calendar
+                  <ExternalLink className="w-3 h-3 opacity-40" />
+                </a>
+                <a href={icalUrl} download
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-all">
+                  <SiApple className="w-4 h-4" />Descargar .ics
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {!loadingTok && !fetchError && (
+          <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
+            <button onClick={reset} disabled={resetting}
+              className="text-xs text-slate-400 hover:text-red-500 transition-colors disabled:opacity-50">
+              {resetting ? "Regenerando…" : "Regenerar enlace"}
+            </button>
+            <button onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-[#050040] text-white text-xs font-semibold hover:bg-[#050040]/90 transition-colors">
+              Listo
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── MeetCalendarView ───────────────────────────────────────────────────────────
 export default function MeetCalendarView() {
-  const today        = React.useMemo(() => new Date(), []);
-  const searchParams = useSearchParams();
+  const today = React.useMemo(() => new Date(), []);
 
   const [view,        setView]        = React.useState<CalView>("month");
   const [currentDate, setCurrentDate] = React.useState(() => new Date(today));
@@ -836,26 +1004,7 @@ export default function MeetCalendarView() {
     event: null, startDate: "", isDragging: false,
   });
 
-  // Sync
-  const [syncing,        setSyncing]        = React.useState(false);
-  const [syncMsg,        setSyncMsg]        = React.useState<{ type: "ok" | "err"; text: string; connect?: boolean } | null>(null);
-  const [gcalConnected,  setGcalConnected]  = React.useState(false);
-
-  // Detect ?gcal=connected after OAuth callback
-  React.useEffect(() => {
-    const gcal = searchParams.get("gcal");
-    if (gcal === "connected") {
-      setGcalConnected(true);
-      setSyncMsg({ type: "ok", text: "Google Calendar conectado correctamente. Haz clic en Sync Google para importar tus eventos." });
-      setTimeout(() => setSyncMsg(null), 8000);
-      // Remove the query param without reload
-      window.history.replaceState({}, "", window.location.pathname);
-    } else if (gcal === "denied") {
-      setSyncMsg({ type: "err", text: "Acceso a Google Calendar denegado." });
-      setTimeout(() => setSyncMsg(null), 5000);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-  }, [searchParams]);
+  const [shareOpen, setShareOpen] = React.useState(false);
 
   // ── Load events ──────────────────────────────────────────────────────────────
   React.useEffect(() => { loadEvents(); }, [view, currentDate]);
@@ -970,13 +1119,25 @@ export default function MeetCalendarView() {
     setDraggingId(ev.id);
   }
 
+  // ── Animation state ──────────────────────────────────────────────────────────
+  const [calAnimKey, setCalAnimKey] = React.useState(0);
+  const navDirRef = React.useRef<"fwd" | "back" | "fade">("fade");
+
   // ── Navigation ───────────────────────────────────────────────────────────────
   function navigate(dir: -1 | 1) {
+    navDirRef.current = dir === 1 ? "fwd" : "back";
+    setCalAnimKey((k) => k + 1);
     const d = new Date(currentDate);
     if (view === "month") d.setMonth(d.getMonth() + dir);
     else if (view === "week") d.setDate(d.getDate() + dir * 7);
     else d.setDate(d.getDate() + dir);
     setCurrentDate(d);
+  }
+
+  function switchView(v: CalView) {
+    navDirRef.current = "fade";
+    setCalAnimKey((k) => k + 1);
+    setView(v);
   }
 
   function headerTitle(): string {
@@ -1059,39 +1220,6 @@ export default function MeetCalendarView() {
     openNew("meeting", d);
   }
 
-  // ── Google Sync ──────────────────────────────────────────────────────────────
-  async function syncGoogle() {
-    setSyncing(true);
-    setSyncMsg(null);
-    try {
-      const res  = await fetch("/api/meetcalendar/sync", { method: "POST" });
-      const data = await res.json();
-      if (res.ok) {
-        setGcalConnected(true);
-        const parts = [];
-        if (data.synced > 0) parts.push(`${data.synced} importado(s) de Google`);
-        if (data.pushed > 0) parts.push(`${data.pushed} exportado(s) a Google`);
-        const txt = parts.length ? parts.join(" · ") : "Calendario sincronizado (sin cambios nuevos)";
-        setSyncMsg({ type: "ok", text: txt });
-        await loadEvents();
-        setTimeout(() => setSyncMsg(null), 6000);
-      } else if (res.status === 400 && data.error === "no_token") {
-        // No Calendar token or expired — redirect to OAuth flow
-        setSyncing(false);
-        window.location.href = "/api/auth/google-calendar";
-        return;
-      } else {
-        setSyncMsg({ type: "err", text: data.error ?? "Error al sincronizar" });
-        setTimeout(() => setSyncMsg(null), 6000);
-      }
-    } catch {
-      setSyncMsg({ type: "err", text: "Error de red al sincronizar" });
-      setTimeout(() => setSyncMsg(null), 5000);
-    } finally {
-      setSyncing(false);
-    }
-  }
-
   // ── Week days ────────────────────────────────────────────────────────────────
   const weekDays = React.useMemo(() => {
     const ws = startOfWeekMon(currentDate);
@@ -1099,11 +1227,24 @@ export default function MeetCalendarView() {
   }, [currentDate]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
+  const calAnim =
+    navDirRef.current === "fwd"  ? "mcalFwd  0.24s cubic-bezier(0.4,0,0.2,1) both" :
+    navDirRef.current === "back" ? "mcalBack 0.24s cubic-bezier(0.4,0,0.2,1) both" :
+                                   "mcalFade 0.2s  cubic-bezier(0.4,0,0.2,1) both";
+
   return (
     <div
       className="flex flex-col bg-white rounded-2xl border border-slate-100 overflow-hidden"
       style={{ height: "calc(100vh - 7rem)" }}
     >
+      <style>{`
+        @keyframes mcalFwd  { from { opacity:0; transform:translateX(18px) } to { opacity:1; transform:translateX(0) } }
+        @keyframes mcalBack { from { opacity:0; transform:translateX(-18px)} to { opacity:1; transform:translateX(0) } }
+        @keyframes mcalFade { from { opacity:0; transform:scale(0.985)     } to { opacity:1; transform:scale(1)     } }
+        @keyframes mcalModal{ from { opacity:0; transform:scale(0.94) translateY(12px) } to { opacity:1; transform:scale(1) translateY(0) } }
+        @keyframes mcalPanel{ from { opacity:0; transform:translateX(100%) } to { opacity:1; transform:translateX(0) } }
+        @keyframes mcalOverlay{ from { opacity:0 } to { opacity:1 } }
+      `}</style>
       {/* ── Toolbar ── */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0 gap-3 flex-wrap">
         {/* Navigation */}
@@ -1128,7 +1269,7 @@ export default function MeetCalendarView() {
             {(["month","week","day"] as CalView[]).map((v) => (
               <button
                 key={v}
-                onClick={() => setView(v)}
+                onClick={() => switchView(v)}
                 className={cn(
                   "px-3 py-1.5 text-xs font-semibold transition-colors capitalize",
                   view === v ? "bg-[#050040] text-white" : "text-slate-500 hover:bg-slate-50",
@@ -1139,18 +1280,14 @@ export default function MeetCalendarView() {
             ))}
           </div>
 
-          {/* Google Sync */}
+          {/* Share */}
           <button
-            onClick={syncGoogle}
-            disabled={syncing}
-            title="Sincronizar con Google Calendar"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+            onClick={() => setShareOpen(true)}
+            title="Compartir calendario"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
           >
-            {syncing
-              ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              : <SiGooglecalendar className="w-3.5 h-3.5 text-[#1A73E8]" />
-            }
-            <span className="hidden sm:inline">{syncing ? "Sincronizando…" : "Sync Google"}</span>
+            <Share2 className="w-3.5 h-3.5 text-[#050040]" />
+            <span className="hidden sm:inline">Compartir</span>
           </button>
 
           {/* New event button */}
@@ -1164,31 +1301,8 @@ export default function MeetCalendarView() {
         </div>
       </div>
 
-      {/* Sync message */}
-      {syncMsg && (
-        <div className={cn(
-          "mx-4 mt-2 mb-0 px-4 py-2 rounded-xl text-xs font-medium flex items-center justify-between gap-3 shrink-0",
-          syncMsg.type === "ok"
-            ? "bg-green-50 text-green-700 border border-green-200"
-            : "bg-red-50 text-red-600 border border-red-100",
-        )}>
-          <div className="flex items-center gap-2">
-            <Check className="w-3.5 h-3.5 shrink-0" />
-            {syncMsg.text}
-          </div>
-          {syncMsg.connect && (
-            <a
-              href="/api/auth/google-calendar"
-              className="flex items-center gap-1 underline underline-offset-2 hover:opacity-80 transition-opacity shrink-0 font-semibold"
-            >
-              Conectar <ExternalLink className="w-3 h-3" />
-            </a>
-          )}
-        </div>
-      )}
-
       {/* ── Calendar body ── */}
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div key={calAnimKey} className="flex-1 min-h-0 flex flex-col" style={{ animation: calAnim }}>
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
             <RefreshCw className="w-6 h-6 text-slate-300 animate-spin" />
@@ -1255,6 +1369,9 @@ export default function MeetCalendarView() {
           onClose={closeModal}
         />
       )}
+
+      {/* ── Share Modal ── */}
+      {shareOpen && <ShareModal onClose={() => setShareOpen(false)} />}
     </div>
   );
 }

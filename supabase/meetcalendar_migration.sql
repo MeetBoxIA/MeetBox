@@ -32,3 +32,6 @@ CREATE INDEX IF NOT EXISTS calendar_events_google_event_id_idx ON calendar_event
 
 ALTER TABLE calendar_events ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "service_role_only" ON calendar_events USING (true) WITH CHECK (true);
+
+-- Share token for public calendar link
+ALTER TABLE users ADD COLUMN IF NOT EXISTS calendar_share_token TEXT UNIQUE;

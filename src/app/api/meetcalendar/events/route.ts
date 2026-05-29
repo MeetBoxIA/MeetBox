@@ -17,14 +17,14 @@ async function pushToGcal(token: string, ev: {
 }): Promise<string | null> {
   const start = ev.all_day
     ? { date: ev.start_at.split("T")[0] }
-    : { dateTime: ev.start_at, timeZone: "UTC" };
+    : { dateTime: ev.start_at };
   const end = ev.end_at
     ? ev.all_day
       ? { date: ev.end_at.split("T")[0] }
-      : { dateTime: ev.end_at, timeZone: "UTC" }
+      : { dateTime: ev.end_at }
     : ev.all_day
       ? { date: ev.start_at.split("T")[0] }
-      : { dateTime: new Date(new Date(ev.start_at).getTime() + 3600_000).toISOString(), timeZone: "UTC" };
+      : { dateTime: new Date(new Date(ev.start_at).getTime() + 3600_000).toISOString() };
 
   const res = await fetch(
     "https://www.googleapis.com/calendar/v3/calendars/primary/events",
