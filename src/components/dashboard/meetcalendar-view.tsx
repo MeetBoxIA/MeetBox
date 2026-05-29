@@ -485,10 +485,11 @@ function DayPanel({ day, events, onClose, onNew, onEdit }: DayPanelProps) {
         {/* Events list */}
         <div className="flex-1 overflow-y-auto">
           {events.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-center px-6">
-              <CalendarDays className="w-10 h-10 text-slate-200 mb-3" />
-              <p className="text-sm text-slate-400">Sin eventos este día</p>
-              <p className="text-xs text-slate-300 mt-1">Añade una reunión, evento o recordatorio</p>
+            <div className="flex flex-col items-center justify-center py-10 text-center px-6">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/undraw_booking_8vl5.svg" alt="" className="w-40 h-auto mb-4 opacity-90" draggable={false} />
+              <p className="text-sm font-medium text-slate-500">Sin eventos este día</p>
+              <p className="text-xs text-slate-400 mt-1">Añade una reunión, evento o recordatorio</p>
             </div>
           ) : (
             <div className="divide-y divide-slate-50">

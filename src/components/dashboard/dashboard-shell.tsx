@@ -4,11 +4,12 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Video, DoorOpen, Calendar, Puzzle, Settings, BookOpen,
-  Search, Bell, MoreHorizontal, Plus, Upload, FileText, Plug2,
-  TrendingUp, TrendingDown, ChevronRight, ChevronDown, ChevronLeft,
-  LogOut, Clock, Users, Mic, Sparkles, Menu, X, User, Mail,
+  Search, Bell, Plus, FileText, Plug2,
+  ChevronRight, ChevronDown, ChevronLeft,
+  LogOut, Clock, Users, Sparkles, Menu, X, User, Mail,
   Building2, Shield, CreditCard, Trash2, AlertTriangle, Save,
   Eye, EyeOff, Check, Link2, Zap, CheckCircle2, Globe,
+  ArrowRight, MapPin,
 } from "lucide-react";
 import { SiSlack, SiGooglecalendar, SiJira, SiNotion } from "react-icons/si";
 import { TbBrandTeams, TbBrandZoom } from "react-icons/tb";
@@ -16,6 +17,7 @@ import { signOut } from "next-auth/react";
 import MeetBookView      from "./meetbook-view";
 import MeetCalendarView from "./meetcalendar-view";
 import RoomsView        from "./rooms-view";
+import MeetingsView     from "./meetings-view";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface User    { name: string; email: string; image: string | null }
@@ -31,11 +33,7 @@ interface DashboardShellProps { user: User; profile: Profile }
 const NAV_ITEMS = [
   { id: "home",     label: "Inicio",      icon: LayoutDashboard, children: null },
   { id: "meetings", label: "Reuniones",   icon: Video,           children: null },
-  {
-    id: "rooms", label: "Salas", icon: DoorOpen, children: [
-      { id: "rooms-meetings", label: "Reuniones", icon: Video },
-    ],
-  },
+  { id: "rooms", label: "Salas", icon: DoorOpen, children: null },
   { id: "meetcalendar", label: "MeetCalendar", icon: Calendar,  children: null },
   { id: "meetbook",     label: "MeetBook",     icon: BookOpen,  children: null },
   { id: "integrations", label: "Integraciones", icon: Puzzle,  children: null },
@@ -87,27 +85,6 @@ const CALENDAR_EVENTS: Record<number, { title: string; time: string; color: stri
 
 const MONTHS_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const DAYS_SHORT = ["Lu","Ma","Mi","Ju","Vi","Sá","Do"];
-
-const RECENT_MEETINGS = [
-  { id: 1, title: "Daily Standup",         date: "Hoy, 10:00",    duration: "30 min",   participants: 5,  status: "completed"  },
-  { id: 2, title: "Revisión de sprint Q2", date: "Ayer, 15:30",   duration: "1h 15min", participants: 8,  status: "completed"  },
-  { id: 3, title: "Llamada con cliente",   date: "Ayer, 11:00",   duration: "45 min",   participants: 3,  status: "processing" },
-  { id: 4, title: "Planificación mensual", date: "23 may, 09:00", duration: "2h",       participants: 12, status: "completed"  },
-  { id: 5, title: "Demo de producto",      date: "22 may, 16:00", duration: "1h",       participants: 6,  status: "scheduled"  },
-];
-
-const STATUS_CONFIG = {
-  completed:  { label: "Completada", className: "bg-green-50 text-green-700 border-green-200"  },
-  processing: { label: "Procesando", className: "bg-blue-50  text-blue-700  border-blue-200"   },
-  scheduled:  { label: "Programada", className: "bg-slate-50 text-slate-600 border-slate-200"  },
-} as const;
-
-const QUICK_ACTIONS = [
-  { label: "Nueva reunión",        desc: "Inicia o programa una reunión",    icon: Video,    bg: "bg-[#050040]/8", color: "text-[#050040]"   },
-  { label: "Importar grabación",   desc: "Sube un archivo de audio o video", icon: Upload,   bg: "bg-violet-50",   color: "text-violet-600"  },
-  { label: "Transcripciones",      desc: "Accede al historial completo",     icon: FileText, bg: "bg-emerald-50",  color: "text-emerald-600" },
-  { label: "Conectar herramienta", desc: "Añade una nueva integración",      icon: Plug2,    bg: "bg-amber-50",    color: "text-amber-600"   },
-];
 
 const TEAM_SIZES = [
   { id: "solo",  label: "Solo yo"       },
@@ -220,8 +197,10 @@ function SidebarContent({
         {NAV_ITEMS.map(({ id, label, icon: Icon, children }) => {
           const active     = activeNav === id || activeNav.startsWith(id + "-");
           const isExpanded = active && !!children;
+          const isRooms    = id === "rooms";
+
           return (
-            <div key={id}>
+            <div key={id} className={cn("relative", isRooms && "group/rooms")}>
               <button
                 onClick={() => {
                   if (children) {
@@ -232,6 +211,7 @@ function SidebarContent({
                 }}
                 className={cn(
                   "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-base font-medium transition-all",
+                  isRooms && "pr-11",
                   active && !children ? "bg-[#050040] text-white shadow-sm"
                     : active          ? "bg-[#050040]/8 text-[#050040]"
                     :                   "text-slate-500 hover:bg-slate-50 hover:text-slate-800",
@@ -244,9 +224,28 @@ function SidebarContent({
                 <span className="flex-1 text-left">{label}</span>
                 {children
                   ? <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", isExpanded ? "rotate-0" : "-rotate-90", active ? "text-[#050040]" : "text-slate-400")} />
-                  : active && <ChevronRight className="w-4 h-4 opacity-70" />
+                  : active && !isRooms && <ChevronRight className="w-4 h-4 opacity-70" />
                 }
               </button>
+
+              {/* Reuniones hover button — only for Salas */}
+              {isRooms && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setActiveNav("rooms-meetings"); onClose?.(); }}
+                  title="Reuniones"
+                  className={cn(
+                    "absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-xl transition-all",
+                    activeNav === "rooms-meetings"
+                      ? "opacity-100 bg-white/25 text-white"
+                      : cn(
+                          "opacity-0 group-hover/rooms:opacity-100",
+                          active ? "text-white hover:bg-white/20" : "text-slate-400 hover:bg-slate-200 hover:text-slate-700",
+                        ),
+                  )}
+                >
+                  <Video className="w-4 h-4" />
+                </button>
+              )}
 
               {children && isExpanded && (
                 <div className="ml-4 mt-0.5 pl-3 border-l-2 border-slate-100 space-y-0.5">
@@ -303,9 +302,20 @@ function SidebarContent({
 }
 
 // ── Header ────────────────────────────────────────────────────────────────────
-function Header({ activeNav, user, onMenuClick }: { activeNav: string; user: User; onMenuClick: () => void }) {
+const USER_MENU = [
+  { id: "settings-profile",       label: "Perfil",         icon: User       },
+  { id: "settings-notifications", label: "Notificaciones", icon: Bell       },
+  { id: "settings-security",      label: "Seguridad",      icon: Shield     },
+  { id: "settings-account",       label: "Cuenta",         icon: CreditCard },
+  { id: "integrations",           label: "Integraciones",  icon: Puzzle     },
+];
+
+function Header({ activeNav, user, onMenuClick, setActiveNav }: {
+  activeNav: string; user: User; onMenuClick: () => void; setActiveNav: (id: string) => void;
+}) {
   const [search, setSearch] = React.useState("");
   const [searchOpen, setSearchOpen] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
   return (
     <header className="h-20 bg-white border-b border-slate-100 flex items-center gap-3 px-5 lg:px-8 shrink-0">
       <button onClick={onMenuClick} className="lg:hidden p-2 rounded-xl hover:bg-slate-50 transition-colors shrink-0">
@@ -343,149 +353,239 @@ function Header({ activeNav, user, onMenuClick }: { activeNav: string; user: Use
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#050040] rounded-full border-2 border-white" />
         </button>
         <div className="hidden sm:block w-px h-6 bg-slate-200 shrink-0" />
-        <button className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl hover:bg-slate-50 transition-colors shrink-0">
-          <Avatar name={user.name} image={user.image} size="sm" />
-          <span className="text-sm font-medium text-slate-700 hidden sm:block">{user.name.split(" ")[0]}</span>
-        </button>
+        <div className="relative shrink-0">
+          <button
+            onClick={() => setMenuOpen((o) => !o)}
+            className={cn(
+              "flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl transition-colors",
+              menuOpen ? "bg-slate-100" : "hover:bg-slate-50",
+            )}
+          >
+            <Avatar name={user.name} image={user.image} size="sm" />
+            <span className="text-sm font-medium text-slate-700 hidden sm:block">{user.name.split(" ")[0]}</span>
+            <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform hidden sm:block", menuOpen && "rotate-180")} />
+          </button>
+
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+              <div
+                className="absolute right-0 top-full mt-2 z-50 w-60 bg-white rounded-2xl border border-slate-100 shadow-xl overflow-hidden"
+                style={{ animation: "userMenu 0.16s cubic-bezier(0.16,1,0.3,1) both" }}
+              >
+                <style>{`@keyframes userMenu{from{opacity:0;transform:scale(0.96) translateY(-6px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
+
+                {/* User header */}
+                <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-100">
+                  <Avatar name={user.name} image={user.image} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-800 truncate leading-tight">{user.name}</p>
+                    <p className="text-xs text-slate-400 truncate leading-tight mt-0.5">{user.email}</p>
+                  </div>
+                </div>
+
+                {/* Options */}
+                <div className="py-1.5">
+                  {USER_MENU.map(({ id, label, icon: Icon }) => (
+                    <button
+                      key={id}
+                      onClick={() => { setActiveNav(id); setMenuOpen(false); }}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors",
+                        activeNav === id ? "text-[#050040] bg-[#050040]/5" : "text-slate-600 hover:bg-slate-50",
+                      )}
+                    >
+                      <Icon className={cn("w-4 h-4 shrink-0", activeNav === id ? "text-[#050040]" : "text-slate-400")} />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Logout */}
+                <div className="border-t border-slate-100 py-1.5">
+                  <button
+                    onClick={() => signOut({ callbackUrl: "/auth" })}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4 shrink-0" />
+                    Cerrar sesión
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </header>
   );
 }
 
 // ── Home view ─────────────────────────────────────────────────────────────────
-function WelcomeHeader({ user }: { user: User }) {
-  const hour     = new Date().getHours();
-  const greeting = hour < 12 ? "Buenos días" : hour < 19 ? "Buenas tardes" : "Buenas noches";
+interface HomeMeeting {
+  id: string; title: string; start_at: string; end_at: string | null;
+  all_day: boolean; color: string; location: string | null;
+  room: { name: string; emoji: string; color: string } | null;
+}
+
+function homeTime(iso: string) {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+function relativeUntil(iso: string): string {
+  const diff = new Date(iso).getTime() - Date.now();
+  const mins = Math.round(diff / 60000);
+  if (mins <= 0) return "ahora mismo";
+  if (mins < 60) return `en ${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  if (hrs < 24) return rem > 0 ? `en ${hrs} h ${rem} min` : `en ${hrs} h`;
+  return "más tarde hoy";
+}
+
+const HOME_GATEWAYS = [
+  { id: "meetcalendar", label: "MeetCalendar", desc: "Tu calendario y eventos",        icon: Calendar, color: "#050040" },
+  { id: "rooms",        label: "Salas",        desc: "Tus espacios y equipos",         icon: DoorOpen, color: "#059669" },
+  { id: "meetbook",     label: "MeetBook",     desc: "Notas, ideas y documentos",      icon: BookOpen, color: "#7c3aed" },
+  { id: "meetings",     label: "Reuniones",    desc: "Hoy, grabaciones e historial",   icon: Video,    color: "#d97706" },
+];
+
+function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) => void }) {
+  const [meetings, setMeetings] = React.useState<HomeMeeting[]>([]);
+  const [loading,  setLoading]  = React.useState(true);
+
+  React.useEffect(() => {
+    fetch("/api/meetings/today")
+      .then((r) => r.ok ? r.json() : { meetings: [] })
+      .then((d) => setMeetings(d.meetings ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const hour      = new Date().getHours();
+  const greeting  = hour < 12 ? "Buenos días" : hour < 19 ? "Buenas tardes" : "Buenas noches";
+  const firstName = user.name.split(" ")[0];
+  const dateStr   = new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+
+  const now      = Date.now();
+  const upcoming = meetings
+    .filter((m) => !m.all_day && new Date(m.start_at).getTime() >= now - 5 * 60000)
+    .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
+  const next     = upcoming[0] ?? null;
+
+  const contextual = loading
+    ? "Preparando tu día…"
+    : next
+      ? <>Tu próxima reunión es <span className="text-white font-semibold">{relativeUntil(next.start_at)}</span>.</>
+      : meetings.length > 0
+        ? "Ya pasaron tus reuniones de hoy. Buen trabajo. 👏"
+        : "No tienes reuniones hoy. Un buen momento para ordenar tus ideas.";
+
   return (
-    <div className="flex items-start sm:items-center justify-between mb-6 gap-4">
+    <div className="max-w-6xl mx-auto space-y-6">
+      {/* ── Hero ── */}
+      <div className="relative overflow-hidden rounded-3xl px-8 py-10 sm:px-12 sm:py-14 min-h-[230px] sm:min-h-[260px] flex flex-col justify-center"
+        style={{ background: "linear-gradient(135deg, #050040 0%, #0c0c63 55%, #1a1a8c 100%)" }}>
+        <div className="absolute -top-20 -right-12 w-72 h-72 rounded-full bg-white/5" />
+        <div className="absolute -bottom-24 right-1/4 w-60 h-60 rounded-full bg-white/5" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/undraw_online-meeting_qe61.svg" alt=""
+          className="hidden lg:block absolute right-8 -bottom-6 w-56 xl:w-64 opacity-95 pointer-events-none select-none" draggable={false} />
+
+        <div className="relative max-w-lg">
+          <div className="flex items-center gap-3 mb-5">
+            <Avatar name={user.name} image={user.image} />
+            <p className="text-sm font-medium text-white/60 capitalize">{dateStr}</p>
+          </div>
+          <h1 className="text-4xl sm:text-5xl font-bold text-white leading-tight">
+            {greeting}, {firstName}
+          </h1>
+          <p className="text-base sm:text-lg text-white/70 mt-3 leading-relaxed">{contextual}</p>
+        </div>
+      </div>
+
+      {/* ── Focus: próxima reunión ── */}
+      {!loading && next ? (
+        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+          <div className="px-6 pt-5 pb-2 flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-[#050040]" />
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wide">Lo que sigue</h2>
+          </div>
+          <div className="px-6 pb-6 flex items-center gap-5">
+            <div className="text-center shrink-0 w-20">
+              <p className="text-3xl font-bold leading-none" style={{ color: next.color }}>{homeTime(next.start_at)}</p>
+              {next.end_at && <p className="text-sm text-slate-400 mt-1.5">{homeTime(next.end_at)}</p>}
+            </div>
+            <div className="w-1.5 self-stretch rounded-full shrink-0" style={{ backgroundColor: next.color }} />
+            <div className="flex-1 min-w-0">
+              <span className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full mb-1.5"
+                style={{ backgroundColor: next.color + "18", color: next.color }}>
+                {relativeUntil(next.start_at)}
+              </span>
+              <h3 className="text-lg font-semibold text-slate-800 truncate">{next.title}</h3>
+              <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                {next.room && (
+                  <span className="text-sm font-medium text-slate-500">{next.room.emoji} {next.room.name}</span>
+                )}
+                {next.location && (
+                  <span className="flex items-center gap-1 text-sm text-slate-400 truncate">
+                    <MapPin className="w-3.5 h-3.5 shrink-0" />{next.location}
+                  </span>
+                )}
+                {upcoming.length > 1 && (
+                  <span className="flex items-center gap-1 text-sm text-slate-400">
+                    <Clock className="w-3.5 h-3.5 shrink-0" />+{upcoming.length - 1} más hoy
+                  </span>
+                )}
+              </div>
+            </div>
+            <button onClick={() => onNavigate("meetcalendar")}
+              className="shrink-0 flex items-center gap-1.5 px-5 py-3 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 transition-colors">
+              <span className="hidden sm:inline">Ver</span><ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      ) : !loading && (
+        <div className="bg-white rounded-2xl border border-slate-100 px-7 py-6 flex items-center gap-6">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/undraw_writing-online_x665.svg" alt="" className="hidden sm:block w-28 h-auto shrink-0" draggable={false} />
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-slate-800">Tu día está despejado</h3>
+            <p className="text-sm text-slate-400 mt-1">Captura ideas en MeetBook o planifica algo en tu calendario.</p>
+          </div>
+          <button onClick={() => onNavigate("meetbook")}
+            className="shrink-0 flex items-center gap-1.5 px-5 py-3 rounded-xl bg-[#050040]/8 text-[#050040] text-sm font-semibold hover:bg-[#050040]/12 transition-colors">
+            Abrir MeetBook<ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* ── Gateways ── */}
       <div>
-        <p className="text-sm font-medium text-slate-400 mb-0.5">{greeting},</p>
-        <h2 className="text-3xl sm:text-4xl font-bold text-[#050040] leading-tight">{user.name.split(" ")[0]}</h2>
-        <p className="text-base text-slate-500 mt-1">Tienes 3 reuniones programadas para hoy</p>
-      </div>
-      <button className="shrink-0 flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 sm:px-5 py-2.5 sm:py-3 text-base font-medium text-slate-600 hover:border-[#050040]/30 hover:text-[#050040] transition-all shadow-sm">
-        <Sparkles className="w-5 h-5 text-[#050040] shrink-0" />
-        <span className="hidden sm:inline">Resumen IA</span>
-      </button>
-    </div>
-  );
-}
-
-function MetricCard({ label, value, trend, trendUp, icon: Icon, iconBg, iconColor }: {
-  label: string; value: string; trend: string; trendUp?: boolean;
-  icon: React.ElementType; iconBg: string; iconColor: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-6 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
-      <div className="flex items-start justify-between mb-5">
-        <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center shrink-0", iconBg)}>
-          <Icon className={cn("w-6 h-6", iconColor)} />
-        </div>
-        <div className={cn(
-          "flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-full",
-          trendUp === undefined ? "bg-slate-50 text-slate-500"
-            : trendUp ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600",
-        )}>
-          {trendUp !== undefined && (trendUp ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />)}
-          <span className="hidden sm:inline">{trend}</span>
-        </div>
-      </div>
-      <p className="text-4xl font-bold text-slate-800 mb-1">{value}</p>
-      <p className="text-base text-slate-500">{label}</p>
-    </div>
-  );
-}
-
-function RecentMeetings() {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-      <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-        <div>
-          <h2 className="text-base font-semibold text-slate-800">Reuniones recientes</h2>
-          <p className="text-sm text-slate-400 mt-0.5">Últimas sesiones registradas</p>
-        </div>
-        <button className="text-sm font-semibold text-[#050040] hover:underline flex items-center gap-1 shrink-0">
-          Ver todas <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
-      <div className="divide-y divide-slate-50">
-        {RECENT_MEETINGS.map((m) => {
-          const s = STATUS_CONFIG[m.status as keyof typeof STATUS_CONFIG];
-          return (
-            <div key={m.id} className="flex items-center gap-3 px-5 sm:px-6 py-4 hover:bg-slate-50/60 transition-colors group">
-              <div className="w-11 h-11 rounded-xl bg-[#050040]/8 flex items-center justify-center shrink-0">
-                <Mic className="w-5 h-5 text-[#050040]" />
+        <h2 className="text-base font-bold text-slate-700 mb-4 px-1">¿Por dónde empezamos, {firstName}?</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {HOME_GATEWAYS.map(({ id, label, desc, icon: Icon, color }) => (
+            <button key={id} onClick={() => onNavigate(id)}
+              className="group relative text-left bg-white rounded-2xl border border-slate-100 p-6 flex items-center gap-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+              <div className="absolute inset-y-0 left-0 w-1.5 transition-all group-hover:w-2" style={{ backgroundColor: color }} />
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110"
+                style={{ backgroundColor: color + "15" }}>
+                <Icon className="w-7 h-7" style={{ color }} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-base font-medium text-slate-800 truncate">{m.title}</p>
-                <div className="flex items-center gap-2 sm:gap-3 mt-0.5">
-                  <span className="flex items-center gap-1 text-sm text-slate-400">
-                    <Calendar className="w-3.5 h-3.5 shrink-0" />{m.date}
-                  </span>
-                  <span className="hidden sm:flex items-center gap-1 text-sm text-slate-400">
-                    <Clock className="w-3.5 h-3.5 shrink-0" />{m.duration}
-                  </span>
-                  <span className="hidden md:flex items-center gap-1 text-sm text-slate-400">
-                    <Users className="w-3.5 h-3.5 shrink-0" />{m.participants}
-                  </span>
-                </div>
+                <p className="text-lg font-semibold text-slate-800 group-hover:text-[#050040] transition-colors">{label}</p>
+                <p className="text-sm text-slate-400 mt-0.5">{desc}</p>
               </div>
-              <span className={cn("text-sm font-medium px-3 py-1.5 rounded-full border shrink-0", s.className)}>{s.label}</span>
-              <button className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-slate-200 shrink-0 hidden sm:block">
-                <MoreHorizontal className="w-4 h-4 text-slate-500" />
-              </button>
-            </div>
-          );
-        })}
+              <ArrowRight className="w-5 h-5 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-1 transition-all shrink-0" />
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
-  );
-}
 
-function QuickActions() {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-      <div className="px-6 py-5 border-b border-slate-100">
-        <h2 className="text-base font-semibold text-slate-800">Acciones rápidas</h2>
-        <p className="text-sm text-slate-400 mt-0.5">Próximamente disponible</p>
-      </div>
-      <div className="p-4 grid grid-cols-2 gap-2.5">
-        {QUICK_ACTIONS.map(({ label, desc, icon: Icon, bg, color }) => (
-          <button key={label} className="flex flex-col items-start gap-3 p-4 rounded-xl border border-slate-100 hover:border-slate-200 hover:shadow-sm hover:-translate-y-0.5 transition-all text-left group">
-            <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform", bg)}>
-              <Icon className={cn("w-5 h-5", color)} />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-700 leading-tight">{label}</p>
-              <p className="text-xs text-slate-400 mt-0.5 leading-tight hidden sm:block">{desc}</p>
-            </div>
-          </button>
-        ))}
-      </div>
+      {/* ── Closing line ── */}
+      <p className="text-center text-xs text-slate-300 pt-2 pb-1">
+        Hecho para que tus reuniones fluyan · <span className="font-semibold text-slate-400">MeetBox</span>
+      </p>
     </div>
-  );
-}
-
-function HomeView({ user, profile }: { user: User; profile: Profile }) {
-  const metrics = [
-    { label: "Reuniones esta semana", value: "12",  trend: "+3 esta semana", trendUp: true as const, icon: Video,    iconBg: "bg-[#050040]/8", iconColor: "text-[#050040]"   },
-    { label: "Salas activas",         value: "3",   trend: "2 en uso ahora", trendUp: true as const, icon: DoorOpen, iconBg: "bg-emerald-50",  iconColor: "text-emerald-600" },
-    { label: "Integraciones activas", value: String(profile.integrations.length || 0),
-      trend: profile.integrations.length ? "Configuradas" : "Sin configurar",
-      trendUp: profile.integrations.length > 0 ? true as const : undefined,
-      icon: Puzzle, iconBg: "bg-violet-50", iconColor: "text-violet-600" },
-  ];
-  return (
-    <>
-      <WelcomeHeader user={user} />
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
-        {metrics.map((m) => <MetricCard key={m.label} {...m} />)}
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2"><RecentMeetings /></div>
-        <div><QuickActions /></div>
-      </div>
-    </>
   );
 }
 
@@ -700,11 +800,16 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-[#050040]">Integraciones</h2>
-        <p className="text-sm text-slate-500 mt-1">
-          Conecta tus herramientas con MeetBox · <span className="font-medium text-slate-700">{connectedCount} conectada{connectedCount !== 1 ? "s" : ""}</span>
-        </p>
+      {/* Hero banner */}
+      <div className="relative bg-white rounded-2xl border border-slate-100 overflow-hidden px-6 py-5 flex items-center gap-6">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/undraw_programming_j1zw.svg" alt="" className="hidden sm:block w-28 h-auto shrink-0 object-contain" draggable={false} />
+        <div>
+          <h2 className="text-2xl font-bold text-[#050040]">Integraciones</h2>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Conecta tus herramientas con MeetBox · <span className="font-medium text-slate-700">{connectedCount} conectada{connectedCount !== 1 ? "s" : ""}</span>
+          </p>
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -1103,9 +1208,13 @@ function SettingsAccount({ user }: { user: User }) {
 
   return (
     <div className="max-w-2xl space-y-5">
-      <div>
-        <h2 className="text-2xl font-bold text-[#050040]">Cuenta</h2>
-        <p className="text-sm text-slate-500 mt-1">Gestiona tu plan y datos de cuenta</p>
+      <div className="relative bg-white rounded-2xl border border-slate-100 overflow-hidden px-6 py-5 flex items-center gap-5">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/undraw_budgeting_klon.svg" alt="" className="hidden sm:block w-24 h-auto shrink-0 object-contain" draggable={false} />
+        <div>
+          <h2 className="text-2xl font-bold text-[#050040]">Cuenta</h2>
+          <p className="text-sm text-slate-500 mt-0.5">Gestiona tu plan y datos de cuenta</p>
+        </div>
       </div>
 
       {/* Plan */}
@@ -1212,14 +1321,13 @@ function SettingsAccount({ user }: { user: User }) {
 }
 
 // ── Placeholder view ──────────────────────────────────────────────────────────
-function PlaceholderView({ title, icon: Icon }: { title: string; icon: React.ElementType }) {
+function PlaceholderView({ title }: { title: string; icon?: React.ElementType }) {
   return (
-    <div className="flex flex-col items-center justify-center h-64 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-[#050040]/8 flex items-center justify-center mb-4">
-        <Icon className="w-7 h-7 text-[#050040]" />
-      </div>
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/undraw_my-app_jscv.svg" alt="" className="w-52 h-auto mb-6 opacity-90" draggable={false} />
       <h2 className="text-base font-semibold text-slate-700">{title}</h2>
-      <p className="text-sm text-slate-400 mt-1">Esta sección estará disponible pronto</p>
+      <p className="text-sm text-slate-400 mt-1">Esta sección estará disponible muy pronto</p>
     </div>
   );
 }
@@ -1242,7 +1350,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
 
   function renderContent() {
     switch (activeNav) {
-      case "home":                    return <HomeView user={user} profile={profile} />;
+      case "home":                    return <HomeView user={user} onNavigate={setActiveNav} />;
       case "meetcalendar":            return <MeetCalendarView />;
       case "meetbook":                return <MeetBookView />;
       case "integrations":            return <IntegrationsView profile={profile} onUpdate={handleProfileUpdate} />;
@@ -1250,10 +1358,10 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
       case "settings-notifications":  return <SettingsNotifications />;
       case "settings-security":       return <SettingsSecurity />;
       case "settings-account":        return <SettingsAccount user={user} />;
-      case "meetings":                return <PlaceholderView title="Reuniones" icon={Video} />;
+      case "meetings":                return <MeetingsView />;
       case "rooms":                   return <RoomsView />;
       case "rooms-meetings":          return <RoomsView />;
-      default:                        return <HomeView user={user} profile={profile} />;
+      default:                        return <HomeView user={user} onNavigate={setActiveNav} />;
     }
   }
 
@@ -1276,7 +1384,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
 
       {/* Main */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <Header activeNav={activeNav} user={user} onMenuClick={() => setSidebarOpen(true)} />
+        <Header activeNav={activeNav} user={user} onMenuClick={() => setSidebarOpen(true)} setActiveNav={setActiveNav} />
         <main className={cn(
           "flex-1 min-h-0",
           (activeNav === "meetbook" || activeNav === "meetcalendar")

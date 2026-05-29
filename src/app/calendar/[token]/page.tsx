@@ -55,8 +55,9 @@ export default function PublicCalendarPage() {
 
   if (notFound) return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="text-center">
-        <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+      <div className="text-center max-w-sm">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/undraw_my-app_jscv.svg" alt="" className="w-48 h-auto mx-auto mb-6 opacity-90" draggable={false} />
         <h1 className="text-xl font-bold text-slate-700">Calendario no encontrado</h1>
         <p className="text-slate-400 mt-2 text-sm">Este enlace no es válido o ha caducado.</p>
       </div>
@@ -264,9 +265,10 @@ export default function PublicCalendarPage() {
               </>
             ) : (
               <div className="flex flex-col items-center justify-center flex-1 text-center px-6 py-12">
-                <Calendar className="w-10 h-10 text-slate-200 mb-3" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/undraw_booking_8vl5.svg" alt="" className="w-36 h-auto mb-4 opacity-90" draggable={false} />
                 <p className="text-sm font-medium text-slate-500">Selecciona un día</p>
-                <p className="text-xs text-slate-300 mt-1">para ver sus eventos</p>
+                <p className="text-xs text-slate-400 mt-1">para ver sus eventos</p>
               </div>
             )}
           </div>

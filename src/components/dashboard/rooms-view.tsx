@@ -385,9 +385,10 @@ function MembersPanel({ room }: { room: Room }) {
         ) : (
           <>
             {members.length === 0 && !showForm && (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Users className="w-8 h-8 text-slate-200 mb-2" />
-                <p className="text-sm text-slate-400">Sin personas asignadas</p>
+              <div className="flex flex-col items-center justify-center py-6 text-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/undraw_meet-the-team_fau8.svg" alt="" className="w-40 h-auto mb-4 opacity-90" draggable={false} />
+                <p className="text-sm font-medium text-slate-500">Sin personas asignadas</p>
                 <button onClick={() => setShowForm(true)}
                   className="mt-2 text-xs font-semibold text-[#050040] hover:underline">
                   Añadir la primera persona
@@ -480,10 +481,11 @@ function MeetingsPanel({ room }: { room: Room }) {
             <div className="w-5 h-5 border-2 border-slate-200 border-t-[#050040] rounded-full animate-spin" />
           </div>
         ) : meetings.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-center">
-            <Calendar className="w-10 h-10 text-slate-200 mb-3" />
+          <div className="flex flex-col items-center justify-center py-6 text-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/undraw_booking_8vl5.svg" alt="" className="w-40 h-auto mb-4 opacity-90" draggable={false} />
             <p className="text-sm font-medium text-slate-500">Sin reuniones hoy</p>
-            <p className="text-xs text-slate-300 mt-1">Crea una reunión para esta sala</p>
+            <p className="text-xs text-slate-400 mt-1">Crea una reunión para esta sala</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -754,10 +756,9 @@ export default function RoomsView() {
           ))}
         </div>
       ) : rooms.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-[#050040]/8 flex items-center justify-center mb-4">
-            <DoorOpen className="w-7 h-7 text-[#050040]" />
-          </div>
+        <div className="flex flex-col items-center justify-center py-14 text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/undraw_collaboration_hkrb.svg" alt="" className="w-60 h-auto mb-6 opacity-90" draggable={false} />
           <h3 className="text-base font-semibold text-slate-700">Aún no hay salas</h3>
           <p className="text-sm text-slate-400 mt-1 mb-4">Crea tu primera sala para organizar reuniones</p>
           <button onClick={() => setShowCreate(true)}
