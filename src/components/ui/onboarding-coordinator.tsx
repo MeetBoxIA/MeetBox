@@ -7,24 +7,20 @@ import OnboardingWizard from "./onboarding-wizard";
 
 type Phase = "checking" | "slides" | "wizard" | "done";
 
-interface Props { serverOnboarded: boolean }
-
-export default function OnboardingCoordinator({ serverOnboarded }: Props) {
+export default function OnboardingCoordinator() {
   const { data: session } = useSession();
-  const [phase, setPhase] = React.useState<Phase>(
-    serverOnboarded ? "done" : "checking",
-  );
+  const [phase, setPhase] = React.useState<Phase>("checking");
 
   React.useEffect(() => {
-    // If DB says onboarded, nothing else to do
-    if (serverOnboarded) { setPhase("done"); return; }
-
     // Wait until session has resolved
     if (!session?.user) return;
 
-    // Build keys unique to this user so different accounts on the same
-    // browser each get their own onboarding state.
-    const uid      = session.user.email ?? session.user.id ?? "anon";
+    // localStorage is the source of truth per browser, so that:
+    // - new users always see slides → wizard → app
+    // - returning users on the same browser skip directly to the app
+    // - returning users on a fresh browser get re-introduced (the wizard
+    //   re-saves the profile, which is idempotent)
+    const uid       = session.user.email ?? session.user.id ?? "anon";
     const slidesKey = `meetbox_slides_${uid}`;
     const wizardKey = `meetbox_wizard_${uid}`;
 
@@ -34,7 +30,7 @@ export default function OnboardingCoordinator({ serverOnboarded }: Props) {
     if (!slidesDone)       setPhase("slides");
     else if (!wizardDone)  setPhase("wizard");
     else                   setPhase("done");
-  }, [session, serverOnboarded]);
+  }, [session]);
 
   function handleSlidesComplete() {
     const uid = session?.user?.email ?? session?.user?.id ?? "anon";

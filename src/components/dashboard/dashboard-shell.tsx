@@ -18,6 +18,7 @@ import MeetBookView      from "./meetbook-view";
 import MeetCalendarView from "./meetcalendar-view";
 import RoomsView        from "./rooms-view";
 import MeetingsView     from "./meetings-view";
+import OnboardingTour  from "./onboarding-tour";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface User    { name: string; email: string; image: string | null }
@@ -1394,6 +1395,13 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
           {renderContent()}
         </main>
       </div>
+
+      {/* Section-by-section product tours (shown after the wizard finishes) */}
+      <OnboardingTour
+        userName={user.name.split(" ")[0]}
+        userEmail={user.email}
+        activeNav={activeNav}
+      />
     </div>
   );
 }

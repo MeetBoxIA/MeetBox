@@ -22,13 +22,12 @@ export default async function DashboardPage() {
         .maybeSingle()
     : { data: null };
 
-  const serverOnboarded = !!profile?.onboarded_at;
   const integrations    = (profile?.integrations  as string[] | null) ?? [];
   const meetingTypes    = (profile?.meeting_types as string[] | null) ?? [];
 
   return (
     <>
-      <OnboardingCoordinator serverOnboarded={serverOnboarded} />
+      <OnboardingCoordinator />
       <DashboardShell
         user={{
           name:  session.user!.name  ?? "Usuario",
