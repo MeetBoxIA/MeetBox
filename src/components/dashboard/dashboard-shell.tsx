@@ -9,8 +9,9 @@ import {
   LogOut, Clock, Users, Sparkles, Menu, X, User, Mail,
   Building2, Shield, CreditCard, Trash2, AlertTriangle, Save,
   Eye, EyeOff, Check, Link2, Zap, CheckCircle2, Globe,
-  ArrowRight, MapPin, MessageCircle,
+  ArrowRight, MapPin, MessageCircle, Sun, Moon,
 } from "lucide-react";
+import { useTheme } from "@/lib/theme";
 import { SiSlack, SiGooglecalendar, SiJira, SiNotion } from "react-icons/si";
 import { TbBrandTeams, TbBrandZoom } from "react-icons/tb";
 import { signOut } from "next-auth/react";
@@ -166,31 +167,62 @@ function SaveBtn({ loading, saved }: { loading: boolean; saved: boolean }) {
 // ── Meety chat button (lives in the sidebar) ─────────────────────────────────
 function MeetyButton({ active, onClick }: { active: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick}
-      className={cn(
-        "group relative w-full overflow-hidden rounded-2xl p-3.5 text-left transition-all duration-300",
-        active ? "ring-2 ring-white/30 shadow-lg" : "hover:-translate-y-0.5 hover:shadow-lg",
-      )}
-      style={{ background: "linear-gradient(135deg, #050040 0%, #0c0c63 55%, #1a1a8c 100%)" }}
-    >
-      <div className="absolute -top-6 -right-6 w-20 h-20 rounded-full bg-white/8 group-hover:scale-110 transition-transform" />
-      <div className="absolute -bottom-10 -left-8 w-24 h-24 rounded-full bg-white/5" />
+    <div className="relative">
+      {/* Outer glow aura */}
+      <div
+        className="absolute inset-0 rounded-2xl blur-md opacity-50 group-hover:opacity-75 transition-opacity duration-300"
+        style={{ background: "linear-gradient(135deg, #050040, #1a1a8c)" }}
+      />
+      <button
+        onClick={onClick}
+        className={cn(
+          "group relative w-full overflow-hidden rounded-2xl px-4 py-5 text-left transition-all duration-300",
+          active
+            ? "ring-2 ring-white/40 shadow-2xl scale-[1.01]"
+            : "hover:-translate-y-1 hover:shadow-2xl",
+        )}
+        style={{ background: "linear-gradient(135deg, #050040 0%, #0c0c63 45%, #1a1a8c 100%)" }}
+      >
+        {/* Decorative orbs */}
+        <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/8 group-hover:scale-110 transition-transform duration-500" />
+        <div className="absolute -bottom-12 -left-10 w-32 h-32 rounded-full bg-indigo-400/10" />
+        <div className="absolute top-3 right-3">
+          <Sparkles className="w-3.5 h-3.5 text-white/30 group-hover:text-yellow-300/60 transition-colors duration-300" />
+        </div>
 
-      <div className="relative flex items-center gap-3">
-        <div className="w-11 h-11 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/undraw_ai-research-assistant_cxx0.svg" alt="" className="w-9 h-9 object-contain" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <p className="text-sm font-bold text-white leading-tight truncate">Chatea con Meety</p>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+        {/* Main content — centred column */}
+        <div className="relative flex flex-col items-center text-center gap-3">
+          {/* Avatar with ping ring */}
+          <div className="relative">
+            <div
+              className="absolute inset-0 rounded-full bg-indigo-400/30 animate-ping"
+              style={{ animationDuration: "2.5s" }}
+            />
+            <div className="relative w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-lg">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/undraw_ai-research-assistant_cxx0.svg" alt="" className="w-11 h-11 object-contain" />
+            </div>
           </div>
-          <p className="text-[11px] text-white/60 mt-0.5 leading-tight truncate">Tu asistente IA</p>
+
+          {/* Text */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-center gap-1.5">
+              <p className="text-base font-bold text-white leading-tight">Chatea con Meety</p>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            </div>
+            <p className="text-xs text-white/65 leading-snug">
+              Tu asistente IA — siempre listo
+            </p>
+          </div>
+
+          {/* CTA chip */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 group-hover:bg-white/25 transition-colors duration-300 border border-white/10">
+            <MessageCircle className="w-3.5 h-3.5 text-white/80" />
+            <span className="text-[11px] font-semibold text-white/90">Iniciar conversación</span>
+          </div>
         </div>
-        <MessageCircle className="w-4 h-4 text-white/60 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
-      </div>
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -307,17 +339,9 @@ function SidebarContent({
         })}
       </nav>
 
-      {/* Meety chat button — sits in the empty space above the CTA */}
-      <div className="px-4 pt-2 pb-3 shrink-0">
+      {/* Meety chat button */}
+      <div className="px-4 pt-2 pb-4 shrink-0">
         <MeetyButton active={activeNav === "meety"} onClick={() => { onMeetyOpen(); onClose?.(); }} />
-      </div>
-
-      {/* CTA */}
-      <div className="px-4 pb-4 shrink-0">
-        <button className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 text-base font-medium hover:border-[#050040]/40 hover:text-[#050040] transition-all group">
-          <Plus className="w-5 h-5 group-hover:scale-110 transition-transform" />
-          Nueva reunión
-        </button>
       </div>
 
       {/* User */}
@@ -349,6 +373,39 @@ const USER_MENU = [
   { id: "settings-account",       label: "Cuenta",         icon: CreditCard },
   { id: "integrations",           label: "Integraciones",  icon: Puzzle     },
 ];
+
+// ── Theme toggle button ────────────────────────────────────────────────────────
+function ThemeToggleBtn() {
+  const { resolvedTheme, toggleTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+  return (
+    <button
+      onClick={toggleTheme}
+      title={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+      className={cn(
+        "relative p-2 rounded-xl transition-all duration-300 shrink-0 group overflow-hidden",
+        isDark
+          ? "bg-indigo-950/60 hover:bg-indigo-900/60 text-indigo-300"
+          : "hover:bg-slate-50 text-slate-500 hover:text-slate-800",
+      )}
+    >
+      <span className="relative block w-5 h-5">
+        <Sun
+          className={cn(
+            "absolute inset-0 w-5 h-5 transition-all duration-300",
+            isDark ? "opacity-0 rotate-90 scale-50" : "opacity-100 rotate-0 scale-100",
+          )}
+        />
+        <Moon
+          className={cn(
+            "absolute inset-0 w-5 h-5 transition-all duration-300",
+            isDark ? "opacity-100 rotate-0 scale-100" : "opacity-0 -rotate-90 scale-50",
+          )}
+        />
+      </span>
+    </button>
+  );
+}
 
 function Header({ activeNav, user, onMenuClick, setActiveNav }: {
   activeNav: string; user: User; onMenuClick: () => void; setActiveNav: (id: string) => void;
@@ -388,6 +445,8 @@ function Header({ activeNav, user, onMenuClick, setActiveNav }: {
             <Search className="w-5 h-5 text-slate-500" />
           </button>
         )}
+        {/* Theme toggle */}
+        <ThemeToggleBtn />
         <button className="relative p-2 rounded-xl hover:bg-slate-50 transition-colors group shrink-0">
           <Bell className="w-5 h-5 text-slate-500 group-hover:text-slate-800 transition-colors" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#050040] rounded-full border-2 border-white" />

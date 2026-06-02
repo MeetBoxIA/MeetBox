@@ -4,6 +4,7 @@ import * as React from "react";
 import { useState, useEffect, useRef } from "react";
 import { Lightbulb, Mic, Globe, Plus, Send, Image as ImageIcon, FileText, Video as VideoIcon, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useTheme } from "@/lib/theme";
 
 const DEFAULT_PLACEHOLDERS = [
   "Pregúntame sobre tu día",
@@ -43,6 +44,9 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
   onSend,
   alwaysExpanded = false,
 }) => {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [showPlaceholder, setShowPlaceholder] = useState(true);
   const [isActive, setIsActive] = useState(alwaysExpanded);
@@ -126,12 +130,16 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
   const containerVariants = {
     collapsed: {
       height: 68,
-      boxShadow: "0 2px 8px 0 rgba(5,0,64,0.06)",
+      boxShadow: isDark
+        ? "0 2px 16px 0 rgba(0,0,0,0.55)"
+        : "0 2px 8px 0 rgba(5,0,64,0.06)",
       transition: { type: "spring" as const, stiffness: 120, damping: 18 },
     },
     expanded: {
       height: attachments.length > 0 ? 188 : 128,
-      boxShadow: "0 12px 40px -8px rgba(5,0,64,0.18)",
+      boxShadow: isDark
+        ? "0 16px 48px -8px rgba(0,0,0,0.75), 0 0 0 1px rgba(129,140,248,0.1)"
+        : "0 12px 40px -8px rgba(5,0,64,0.18)",
       transition: { type: "spring" as const, stiffness: 120, damping: 18 },
     },
   };
@@ -162,15 +170,18 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
 
   const expanded = isActive || !!inputValue || alwaysExpanded || attachments.length > 0;
 
+  const cardBg = isDark ? "#161c2d" : "#ffffff";
+  const textColor = isDark ? "#f1f5f9" : "#0f172a";
+
   return (
-    <div className="w-full flex justify-center items-center text-slate-900">
+    <div className="w-full flex justify-center items-center" style={{ color: textColor }}>
       <motion.div
         ref={wrapperRef}
         className="w-full max-w-3xl relative"
         variants={containerVariants}
         animate={expanded ? "expanded" : "collapsed"}
         initial="collapsed"
-        style={{ overflow: "visible", borderRadius: 32, background: "#fff" }}
+        style={{ overflow: "visible", borderRadius: 32, background: cardBg }}
         onClick={handleActivate}
       >
         {/* Hidden file input */}
@@ -264,7 +275,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
           </AnimatePresence>
 
           {/* Input row */}
-          <div className="flex items-center gap-2 p-3 bg-white">
+          <div className="flex items-center gap-2 p-3" style={{ background: cardBg }}>
             <button
               className={`p-3 rounded-full transition-all ${
                 attachMenuOpen
@@ -286,9 +297,10 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
-                className="flex-1 py-2 text-base w-full font-normal text-slate-800 bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus:border-none focus:shadow-none focus-visible:outline-none focus-visible:ring-0 appearance-none"
+                className="flex-1 py-2 text-base w-full font-normal bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus:border-none focus:shadow-none focus-visible:outline-none focus-visible:ring-0 appearance-none"
                 style={{
                   position: "relative", zIndex: 1,
+                  color: textColor,
                   outline: "none", border: "none", boxShadow: "none",
                   WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
                   background: "transparent",
