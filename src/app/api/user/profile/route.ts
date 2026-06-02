@@ -83,10 +83,15 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Sin cambios" }, { status: 400 });
   }
 
+  // Upsert so the row is created if the user hasn't completed onboarding yet
+  // (or if their profile row was lost). `update()` silently does nothing when
+  // no row matches, which surfaces as "saved" in the UI but no persistence.
   const { error } = await getSupabase()
     .from("user_profiles")
-    .update(patch)
-    .eq("user_id", dbUser.id);
+    .upsert(
+      { user_id: dbUser.id, ...patch },
+      { onConflict: "user_id" },
+    );
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

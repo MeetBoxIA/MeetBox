@@ -9,7 +9,7 @@ import {
   LogOut, Clock, Users, Sparkles, Menu, X, User, Mail,
   Building2, Shield, CreditCard, Trash2, AlertTriangle, Save,
   Eye, EyeOff, Check, Link2, Zap, CheckCircle2, Globe,
-  ArrowRight, MapPin, Send, MessageCircle,
+  ArrowRight, MapPin, MessageCircle,
 } from "lucide-react";
 import { SiSlack, SiGooglecalendar, SiJira, SiNotion } from "react-icons/si";
 import { TbBrandTeams, TbBrandZoom } from "react-icons/tb";
@@ -19,6 +19,7 @@ import MeetCalendarView from "./meetcalendar-view";
 import RoomsView        from "./rooms-view";
 import MeetingsView     from "./meetings-view";
 import OnboardingTour  from "./onboarding-tour";
+import MeetyView       from "./meety-view";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface User    { name: string; email: string; image: string | null }
@@ -54,6 +55,7 @@ const SECTION_TITLES: Record<string, string> = {
   rooms:                   "Salas",
   "rooms-meetings":        "Salas · Reuniones",
   meetcalendar:            "MeetCalendar",
+  meety:                   "Meety · Asistente IA",
   meetbook:                "MeetBook",
   integrations:            "Integraciones",
   "settings-profile":      "Configuración · Perfil",
@@ -161,157 +163,16 @@ function SaveBtn({ loading, saved }: { loading: boolean; saved: boolean }) {
   );
 }
 
-// ── Meety chat ────────────────────────────────────────────────────────────────
-interface MeetyMessage { from: "bot" | "user"; text: string; time: number; }
-
-const MEETY_SUGGESTIONS = [
-  "¿Qué tengo hoy?",
-  "Crea una reunión",
-  "Resume mis notas",
-  "Busca una grabación",
-];
-
-function MeetyChat({ userName, onClose }: { userName: string; onClose: () => void }) {
-  const [messages, setMessages] = React.useState<MeetyMessage[]>(() => ([
-    {
-      from: "bot",
-      time: Date.now(),
-      text: `¡Hola${userName ? ", " + userName : ""}! Soy Meety, tu asistente IA. Pronto podré crear reuniones, resumir tus notas y buscar grabaciones por ti.`,
-    },
-  ]));
-  const [input, setInput]   = React.useState("");
-  const [typing, setTyping] = React.useState(false);
-  const scrollRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, typing]);
-
-  function send(text: string) {
-    const t = text.trim();
-    if (!t) return;
-    setMessages((m) => [...m, { from: "user", text: t, time: Date.now() }]);
-    setInput("");
-    setTyping(true);
-    setTimeout(() => {
-      setMessages((m) => [...m, {
-        from: "bot",
-        time: Date.now(),
-        text: "¡Gracias por probarme! Esta función conversacional aún está en desarrollo. Muy pronto podré ayudarte con esto y mucho más.",
-      }]);
-      setTyping(false);
-    }, 800);
-  }
-
-  return (
-    <div className="fixed inset-0 z-[55] flex items-end sm:items-center justify-end sm:justify-end p-0 sm:p-6">
-      <style>{`
-        @keyframes meetyOverlay { from { opacity: 0 } to { opacity: 1 } }
-        @keyframes meetyPanel { from { opacity: 0; transform: translateY(20px) } to { opacity: 1; transform: translateY(0) } }
-        @keyframes meetyBubble { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: translateY(0) } }
-        @keyframes meetyDot { 0%, 60%, 100% { opacity: 0.3 } 30% { opacity: 1 } }
-      `}</style>
-
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-        style={{ animation: "meetyOverlay 0.2s ease both" }} onClick={onClose} />
-
-      <div
-        className="relative w-full sm:w-96 sm:max-w-md h-[85vh] sm:h-[600px] bg-white sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ animation: "meetyPanel 0.3s cubic-bezier(0.16,1,0.3,1) both" }}
-      >
-        {/* Header */}
-        <div className="relative overflow-hidden px-5 py-4 shrink-0"
-          style={{ background: "linear-gradient(135deg, #050040 0%, #0c0c63 60%, #1a1a8c 100%)" }}>
-          <div className="absolute -top-10 -right-6 w-32 h-32 rounded-full bg-white/5" />
-          <div className="relative flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-white/15 flex items-center justify-center shrink-0 backdrop-blur-sm">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/undraw_ai-research-assistant_cxx0.svg" alt="" className="w-9 h-9 object-contain" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="text-base font-bold text-white">Meety</p>
-                <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-300">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Conectado
-                </span>
-              </div>
-              <p className="text-xs text-white/60">Tu asistente IA</p>
-            </div>
-            <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/10 transition-colors shrink-0">
-              <X className="w-4 h-4 text-white/80" />
-            </button>
-          </div>
-        </div>
-
-        {/* Messages */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-slate-50/40">
-          {messages.map((m, i) => (
-            <div key={i} className={cn("flex", m.from === "user" ? "justify-end" : "justify-start")}
-              style={{ animation: "meetyBubble 0.22s cubic-bezier(0.16,1,0.3,1) both" }}>
-              <div className={cn(
-                "max-w-[85%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed",
-                m.from === "user"
-                  ? "bg-[#050040] text-white rounded-br-md"
-                  : "bg-white text-slate-700 border border-slate-100 rounded-bl-md shadow-sm",
-              )}>
-                {m.text}
-              </div>
-            </div>
-          ))}
-
-          {typing && (
-            <div className="flex justify-start" style={{ animation: "meetyBubble 0.22s cubic-bezier(0.16,1,0.3,1) both" }}>
-              <div className="px-4 py-3 rounded-2xl bg-white border border-slate-100 rounded-bl-md shadow-sm flex items-center gap-1">
-                {[0, 1, 2].map((d) => (
-                  <span key={d} className="w-1.5 h-1.5 rounded-full bg-slate-400"
-                    style={{ animation: `meetyDot 1.2s ${d * 0.15}s infinite` }} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {messages.length === 1 && !typing && (
-            <div className="pt-2">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1 mb-2">Prueba con</p>
-              <div className="flex flex-wrap gap-1.5">
-                {MEETY_SUGGESTIONS.map((s) => (
-                  <button key={s} onClick={() => send(s)}
-                    className="text-xs font-medium px-3 py-1.5 rounded-full bg-white border border-slate-200 text-slate-600 hover:border-[#050040]/40 hover:text-[#050040] transition-colors">
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Input */}
-        <div className="px-4 py-3 border-t border-slate-100 shrink-0 bg-white">
-          <form onSubmit={(e) => { e.preventDefault(); send(input); }} className="flex items-center gap-2">
-            <input
-              autoFocus type="text" value={input} onChange={(e) => setInput(e.target.value)}
-              placeholder="Escribe un mensaje…"
-              className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-[#050040]/50 focus:ring-2 focus:ring-[#050040]/8 transition"
-            />
-            <button type="submit" disabled={!input.trim()}
-              className="w-10 h-10 rounded-xl bg-[#050040] text-white flex items-center justify-center hover:bg-[#050040]/90 disabled:opacity-40 transition-all hover:scale-105 active:scale-95">
-              <Send className="w-4 h-4" />
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MeetyButton({ onClick }: { onClick: () => void }) {
+// ── Meety chat button (lives in the sidebar) ─────────────────────────────────
+function MeetyButton({ active, onClick }: { active: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick}
-      className="group relative w-full overflow-hidden rounded-2xl p-3.5 text-left transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg"
+      className={cn(
+        "group relative w-full overflow-hidden rounded-2xl p-3.5 text-left transition-all duration-300",
+        active ? "ring-2 ring-white/30 shadow-lg" : "hover:-translate-y-0.5 hover:shadow-lg",
+      )}
       style={{ background: "linear-gradient(135deg, #050040 0%, #0c0c63 55%, #1a1a8c 100%)" }}
     >
-      {/* Decorative blobs */}
       <div className="absolute -top-6 -right-6 w-20 h-20 rounded-full bg-white/8 group-hover:scale-110 transition-transform" />
       <div className="absolute -bottom-10 -left-8 w-24 h-24 rounded-full bg-white/5" />
 
@@ -448,7 +309,7 @@ function SidebarContent({
 
       {/* Meety chat button — sits in the empty space above the CTA */}
       <div className="px-4 pt-2 pb-3 shrink-0">
-        <MeetyButton onClick={() => { onMeetyOpen(); onClose?.(); }} />
+        <MeetyButton active={activeNav === "meety"} onClick={() => { onMeetyOpen(); onClose?.(); }} />
       </div>
 
       {/* CTA */}
@@ -1516,7 +1377,6 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
   const [activeNav,   setActiveNav]   = React.useState("home");
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [profile,     setProfile]     = React.useState<Profile>(initialProfile);
-  const [meetyOpen,   setMeetyOpen]   = React.useState(false);
 
   React.useEffect(() => {
     const handler = () => { if (window.innerWidth >= 1024) setSidebarOpen(false); };
@@ -1541,6 +1401,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
       case "meetings":                return <MeetingsView />;
       case "rooms":                   return <RoomsView />;
       case "rooms-meetings":          return <RoomsView />;
+      case "meety":                   return <MeetyView userName={user.name.split(" ")[0]} userImage={user.image} />;
       default:                        return <HomeView user={user} onNavigate={setActiveNav} />;
     }
   }
@@ -1549,7 +1410,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* Desktop sidebar */}
       <div className="hidden lg:flex w-72 shrink-0 flex-col border-r border-slate-100">
-        <SidebarContent user={user} profile={profile} activeNav={activeNav} setActiveNav={setActiveNav} onMeetyOpen={() => setMeetyOpen(true)} />
+        <SidebarContent user={user} profile={profile} activeNav={activeNav} setActiveNav={setActiveNav} onMeetyOpen={() => setActiveNav("meety")} />
       </div>
 
       {/* Mobile sidebar overlay */}
@@ -1557,7 +1418,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
         <div className="fixed inset-0 z-50 lg:hidden flex">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
           <div className="relative w-72 max-w-[85vw] shadow-2xl">
-            <SidebarContent user={user} profile={profile} activeNav={activeNav} setActiveNav={setActiveNav} onClose={() => setSidebarOpen(false)} onMeetyOpen={() => setMeetyOpen(true)} />
+            <SidebarContent user={user} profile={profile} activeNav={activeNav} setActiveNav={setActiveNav} onClose={() => setSidebarOpen(false)} onMeetyOpen={() => setActiveNav("meety")} />
           </div>
         </div>
       )}
@@ -1567,7 +1428,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
         <Header activeNav={activeNav} user={user} onMenuClick={() => setSidebarOpen(true)} setActiveNav={setActiveNav} />
         <main className={cn(
           "flex-1 min-h-0",
-          (activeNav === "meetbook" || activeNav === "meetcalendar")
+          (activeNav === "meetbook" || activeNav === "meetcalendar" || activeNav === "meety")
             ? "overflow-hidden"
             : "overflow-y-auto p-4 sm:p-6",
         )}>
@@ -1582,10 +1443,6 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
         activeNav={activeNav}
       />
 
-      {/* Meety AI chat */}
-      {meetyOpen && (
-        <MeetyChat userName={user.name.split(" ")[0]} onClose={() => setMeetyOpen(false)} />
-      )}
     </div>
   );
 }
