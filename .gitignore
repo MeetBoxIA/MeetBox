@@ -8,6 +8,8 @@ node_modules/
 out/
 dist/
 build/
+# Excepción: assets fuente del desktop (iconos, entitlements) sí se trackean
+!desktop/build/
 
 # Bun
 bun.lockb
