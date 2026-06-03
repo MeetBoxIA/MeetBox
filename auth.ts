@@ -75,25 +75,27 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
 
     async jwt({ token, user, account }) {
-      if (user?.id) token.id = user.id;
+      if (user?.id)    token.id      = user.id;
+      if (user?.image) token.picture = user.image;
 
       // Para Google, user.id es el sub de OAuth, no el UUID de Supabase.
-      // Consultamos el UUID real justo después del signIn (account solo existe
-      // en el primer JWT, cuando el usuario acaba de autenticarse).
+      // Consultamos el UUID real y el avatar actualizado desde nuestra DB.
       if (account?.provider === "google" && user?.email) {
         const { data } = await getSupabase()
           .from("users")
-          .select("id")
+          .select("id, avatar_url")
           .eq("email", user.email)
           .single();
-        if (data?.id) token.id = data.id;
+        if (data?.id)         token.id      = data.id;
+        if (data?.avatar_url) token.picture = data.avatar_url;
       }
 
       return token;
     },
 
     async session({ session, token }) {
-      if (token?.id) session.user.id = token.id as string;
+      if (token?.id)      session.user.id    = token.id      as string;
+      if (token?.picture) session.user.image = token.picture as string;
       return session;
     },
   },

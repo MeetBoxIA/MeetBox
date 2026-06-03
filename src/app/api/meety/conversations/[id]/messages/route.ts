@@ -56,7 +56,10 @@ Reglas:
 - Sé breve y útil. No te disculpes innecesariamente.
 - Usa Markdown (negritas con **, listas con -, encabezados con ##) para que
   la respuesta sea fácil de escanear.
-- Cuando muestres horarios, formatea como HH:MM (24h).`;
+- Cuando muestres horarios, formatea como HH:MM (24h).
+-Solo responde temas relacionados con reuniones y afines a meetbox o de organizacion no respondas temas diferentes a el fin de la aplicacion si el suaurio pregunta por algo no relacionado responde con un mensaje cordail indicado que no puedes ayudar con esa pregunta pero invita a probar las funcionalidades de meetbox
+`;
+
 
 /**
  * Compose the system prompt with the CURRENT date/time and timezone injected.
@@ -65,17 +68,17 @@ Reglas:
  */
 function composeSystemPrompt(clientTz?: string, clientLocalISO?: string): string {
   // Prefer client-supplied "now" (matches the user's machine), fall back to server.
-  const now      = clientLocalISO ? new Date(clientLocalISO) : new Date();
-  const tz       = clientTz || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const now = clientLocalISO ? new Date(clientLocalISO) : new Date();
+  const tz = clientTz || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
   // Compute the offset for the chosen timezone at this exact moment
-  const dtf      = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longOffset" });
-  const parts    = dtf.formatToParts(now);
-  const offRaw   = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT+00:00";
+  const dtf = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longOffset" });
+  const parts = dtf.formatToParts(now);
+  const offRaw = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT+00:00";
   const offMatch = offRaw.match(/([+-])(\d{1,2}):?(\d{2})?/);
   const offsetStr = offMatch ? `${offMatch[1]}${offMatch[2].padStart(2, "0")}:${(offMatch[3] ?? "00").padStart(2, "0")}` : "+00:00";
 
-  const iso   = now.toISOString();
+  const iso = now.toISOString();
   const human = now.toLocaleString("es-ES", {
     timeZone: tz,
     weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -123,7 +126,7 @@ interface OAIChatMessage {
 }
 interface OAIResponse {
   choices?: { message?: OAIChatMessage; finish_reason?: string }[];
-  error?:   { message?: string };
+  error?: { message?: string };
 }
 
 /**
@@ -134,9 +137,9 @@ interface OAIResponse {
  * Without an API key, falls back to a lightweight keyword response.
  */
 async function generateAssistantReply(
-  ctx:     ToolContext,
+  ctx: ToolContext,
   history: HistoryMessage[],
-  mode:    Mode,
+  mode: Mode,
   clientTz?: string,
   clientNow?: string,
 ): Promise<string> {
@@ -155,15 +158,15 @@ async function generateAssistantReply(
         method: "POST",
         headers: {
           "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type":  "application/json",
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model:       "gpt-4o-mini",
+          model: "gpt-4o-mini",
           messages,
-          tools:       MEETY_TOOLS,
+          tools: MEETY_TOOLS,
           tool_choice: "auto",
           temperature: mode === "think" ? 0.3 : 0.7,
-          max_tokens:  800,
+          max_tokens: 800,
         }),
       });
 
@@ -173,8 +176,8 @@ async function generateAssistantReply(
         break; // fall through to fallback
       }
 
-      const data    = await res.json() as OAIResponse;
-      const choice  = data.choices?.[0]?.message;
+      const data = await res.json() as OAIResponse;
+      const choice = data.choices?.[0]?.message;
       if (!choice) break;
 
       // If the model returned plain text → that's the final answer
@@ -187,9 +190,9 @@ async function generateAssistantReply(
       for (const tc of choice.tool_calls) {
         const result = await executeTool(ctx, tc.function.name, tc.function.arguments);
         messages.push({
-          role:         "tool",
+          role: "tool",
           tool_call_id: tc.id,
-          content:      result,
+          content: result,
         });
       }
       // Loop continues — OpenAI sees the tool results and decides next step
@@ -274,11 +277,11 @@ export async function POST(
   if (!(await verifyOwner(id, userId))) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
-  const content    = String(body.content ?? "").trim();
-  const modeRaw    = String(body.mode ?? "normal");
+  const content = String(body.content ?? "").trim();
+  const modeRaw = String(body.mode ?? "normal");
   const mode: Mode = modeRaw === "think" || modeRaw === "deep" ? modeRaw : "normal";
-  const clientTz   = typeof body.timezone   === "string" ? body.timezone   : undefined;
-  const clientNow  = typeof body.local_time === "string" ? body.local_time : undefined;
+  const clientTz = typeof body.timezone === "string" ? body.timezone : undefined;
+  const clientNow = typeof body.local_time === "string" ? body.local_time : undefined;
 
   if (!content) return NextResponse.json({ error: "Mensaje vacío" }, { status: 400 });
 

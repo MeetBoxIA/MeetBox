@@ -104,11 +104,17 @@ const MEETING_TYPE_OPTS = [
 
 // ── Small utilities ───────────────────────────────────────────────────────────
 function Avatar({ name, image, size = "md" }: { name: string; image: string | null; size?: "sm" | "md" }) {
+  const [broken, setBroken] = React.useState(false);
   const initials = name.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase();
   const sz = size === "sm" ? "w-7 h-7 text-xs" : "w-9 h-9 text-sm";
-  if (image) return (
+  if (image && !broken) return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={image} alt={name} className={cn(sz, "rounded-full object-cover border border-slate-100 shrink-0")} />
+    <img
+      src={image}
+      alt={name}
+      onError={() => setBroken(true)}
+      className={cn(sz, "rounded-full object-cover border border-slate-100 shrink-0")}
+    />
   );
   return (
     <div className={cn(sz, "rounded-full bg-[#050040] text-white flex items-center justify-center font-semibold shrink-0")}>

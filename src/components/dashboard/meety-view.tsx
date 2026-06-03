@@ -99,6 +99,7 @@ function MeetyAvatar() {
 
 // ── UserMessage (bubble on the right) ────────────────────────────────────────
 function UserMessage({ msg, userName, userImage }: { msg: ChatMessage; userName: string; userImage: string | null }) {
+  const [broken, setBroken] = React.useState(false);
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -106,9 +107,9 @@ function UserMessage({ msg, userName, userImage }: { msg: ChatMessage; userName:
       transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
       className="flex items-start gap-3 flex-row-reverse"
     >
-      {userImage
+      {userImage && !broken
         // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={userImage} alt={userName} className="w-9 h-9 rounded-full object-cover border border-slate-100 shrink-0" />
+        ? <img src={userImage} alt={userName} onError={() => setBroken(true)} className="w-9 h-9 rounded-full object-cover border border-slate-100 shrink-0" />
         : <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-600 text-xs font-bold flex items-center justify-center shrink-0">{initials(userName)}</div>}
 
       <div className="max-w-[78%] flex flex-col items-end">
