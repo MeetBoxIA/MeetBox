@@ -10,6 +10,7 @@ import {
   Building2, Shield, CreditCard, Trash2, AlertTriangle, Save,
   Eye, EyeOff, Check, Link2, Zap, CheckCircle2, Globe,
   ArrowRight, MapPin, MessageCircle, Sun, Moon,
+  Monitor, Copy, RefreshCw, Download,
 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { SiSlack, SiGooglecalendar, SiJira, SiNotion } from "react-icons/si";
@@ -854,6 +855,135 @@ function CalendarView() {
   );
 }
 
+// ── Desktop connection card ────────────────────────────────────────────────────
+function DesktopTokenCard() {
+  const [token,        setToken]        = React.useState<string | null>(null);
+  const [loading,      setLoading]      = React.useState(true);
+  const [regenerating, setRegenerating] = React.useState(false);
+  const [copied,       setCopied]       = React.useState(false);
+
+  React.useEffect(() => {
+    fetch("/api/auth/desktop/token")
+      .then((r) => r.ok ? r.json() : { token: null })
+      .then((d) => setToken(d.token ?? null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function regenerate() {
+    setRegenerating(true);
+    const res = await fetch("/api/auth/desktop/token", { method: "DELETE" });
+    const d   = await res.json();
+    setToken(d.token ?? null);
+    setRegenerating(false);
+  }
+
+  async function copyCode() {
+    if (!token) return;
+    await navigator.clipboard.writeText(token);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-[#050040]/15 overflow-hidden shadow-sm">
+      {/* Header */}
+      <div className="flex items-center gap-4 px-6 py-5 border-b border-slate-100">
+        <div className="w-12 h-12 rounded-2xl bg-[#050040] flex items-center justify-center shrink-0">
+          <Monitor className="w-6 h-6 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-slate-800">MeetBox Desktop</h3>
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#050040]/8 text-[#050040]">
+              App nativa
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">Graba el audio de tus videollamadas sin bots · Funciona con Zoom, Meet y Teams</p>
+        </div>
+        <a
+          href="https://meetbox.io/desktop"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+        >
+          <Download className="w-3.5 h-3.5" />
+          Descargar
+        </a>
+      </div>
+
+      {/* Cuerpo */}
+      <div className="px-6 py-5 space-y-5">
+        {/* Instrucciones */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[
+            { n: "1", text: "Descarga e instala MeetBox Desktop en tu equipo" },
+            { n: "2", text: 'Abre la app y pulsa "Conectar cuenta"' },
+            { n: "3", text: "Copia el código de abajo y pégalo en la app" },
+          ].map(({ n, text }) => (
+            <div key={n} className="flex items-start gap-3 bg-slate-50 rounded-xl px-4 py-3">
+              <span className="w-6 h-6 rounded-full bg-[#050040]/10 text-[#050040] text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                {n}
+              </span>
+              <p className="text-xs text-slate-500 leading-snug">{text}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Token */}
+        <div>
+          <p className="text-xs font-semibold text-slate-600 mb-2">Tu código de conexión</p>
+          {loading ? (
+            <div className="h-14 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center">
+              <RefreshCw className="w-4 h-4 text-slate-300 animate-spin" />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              {/* Código */}
+              <div className="flex-1 flex items-center gap-3 px-5 py-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <Monitor className="w-4 h-4 text-slate-300 shrink-0" />
+                <span className="font-mono text-lg font-bold tracking-widest text-[#050040] select-all flex-1">
+                  {token ?? "—"}
+                </span>
+              </div>
+
+              {/* Copiar */}
+              <button
+                onClick={copyCode}
+                disabled={!token}
+                title="Copiar código"
+                className={cn(
+                  "flex items-center gap-1.5 px-4 py-3.5 rounded-xl text-xs font-semibold border transition-all shrink-0",
+                  copied
+                    ? "bg-green-50 text-green-700 border-green-200"
+                    : "bg-[#050040] text-white border-[#050040] hover:bg-[#050040]/90 disabled:opacity-40",
+                )}
+              >
+                {copied
+                  ? <><Check className="w-4 h-4" />Copiado</>
+                  : <><Copy className="w-4 h-4" />Copiar</>
+                }
+              </button>
+
+              {/* Regenerar */}
+              <button
+                onClick={regenerate}
+                disabled={regenerating}
+                title="Generar nuevo código (invalida el anterior)"
+                className="p-3.5 rounded-xl border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-40 shrink-0"
+              >
+                <RefreshCw className={cn("w-4 h-4", regenerating && "animate-spin")} />
+              </button>
+            </div>
+          )}
+          <p className="text-[11px] text-slate-400 mt-2">
+            El código es único para tu cuenta. Regenerarlo desconectará cualquier dispositivo vinculado anteriormente.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Integrations view ─────────────────────────────────────────────────────────
 function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (p: Partial<Profile>) => void }) {
   const [connected, setConnected] = React.useState<string[]>(profile.integrations);
@@ -916,6 +1046,9 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
           </p>
         </div>
       </div>
+
+      {/* MeetBox Desktop */}
+      <DesktopTokenCard />
 
       <div className="space-y-3">
         {INTEGRATION_LIST.map(({ id, label, color, Icon, desc }) => {
