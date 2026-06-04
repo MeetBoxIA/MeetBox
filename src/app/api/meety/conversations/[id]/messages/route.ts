@@ -1,3 +1,14 @@
+/**
+ * /api/meety/conversations/[id]/messages
+ *
+ * GET  — list all messages in a conversation (for history reload)
+ * POST — send a user message and receive the AI assistant's reply
+ *
+ * The assistant reply is generated via OpenAI function-calling when
+ * OPENAI_API_KEY is set; otherwise a lightweight keyword fallback is used.
+ * The model can call tools defined in meety-tools.ts to read/write the
+ * user's calendar, rooms, and MeetBook data.
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/../auth";
 import { getSupabase } from "@/lib/supabase";
@@ -13,6 +24,7 @@ async function resolveUserId(email: string) {
   return data?.id as string | null;
 }
 
+/** Verify the conversation belongs to the given user before reading/writing. */
 async function verifyOwner(conversationId: string, userId: string) {
   const { data } = await getSupabase()
     .from("chat_conversations").select("id").eq("id", conversationId).eq("user_id", userId).single();
@@ -71,7 +83,7 @@ function composeSystemPrompt(clientTz?: string, clientLocalISO?: string): string
   const now = clientLocalISO ? new Date(clientLocalISO) : new Date();
   const tz = clientTz || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
-  // Compute the offset for the chosen timezone at this exact moment
+  // Compute the UTC offset string for the chosen TZ at this exact moment
   const dtf = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longOffset" });
   const parts = dtf.formatToParts(now);
   const offRaw = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT+00:00";
@@ -85,7 +97,7 @@ function composeSystemPrompt(clientTz?: string, clientLocalISO?: string): string
     hour: "2-digit", minute: "2-digit",
   });
 
-  // Local date in the user's TZ (YYYY-MM-DD) for the example
+  // Local date in the user's TZ (YYYY-MM-DD) — used as the example in the prompt
   const localDate = new Intl.DateTimeFormat("en-CA", {
     timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
   }).format(now);
@@ -106,6 +118,7 @@ CONTEXTO TEMPORAL (muy importante):
   Usa ese offset salvo que el usuario indique explícitamente otra zona.`;
 }
 
+/** Return an extra instruction appended to the system prompt based on the mode. */
 function modeInstruction(mode: Mode): string {
   if (mode === "think") return "El usuario activó 'Pensar': razona el problema paso a paso antes de responder. Sé profundo pero conciso.";
   if (mode === "deep") return "El usuario activó 'Búsqueda profunda': busca contexto extra dentro de la conversación, conecta ideas y sintetiza.";
@@ -151,7 +164,8 @@ async function generateAssistantReply(
       ...history.map((m) => ({ role: m.role, content: m.content } as OAIChatMessage)),
     ];
 
-    // Up to N rounds of tool calls before giving up
+    // Tool-calling loop: the model can request up to MAX_ROUNDS tool calls
+    // before we force-return whatever text it has produced so far.
     const MAX_ROUNDS = 6;
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -165,6 +179,7 @@ async function generateAssistantReply(
           messages,
           tools: MEETY_TOOLS,
           tool_choice: "auto",
+          // Lower temperature in "think" mode encourages step-by-step reasoning
           temperature: mode === "think" ? 0.3 : 0.7,
           max_tokens: 800,
         }),
@@ -173,19 +188,19 @@ async function generateAssistantReply(
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({})) as OAIResponse;
         console.error("OpenAI error:", errBody.error?.message ?? res.statusText);
-        break; // fall through to fallback
+        break; // fall through to keyword fallback
       }
 
       const data = await res.json() as OAIResponse;
       const choice = data.choices?.[0]?.message;
       if (!choice) break;
 
-      // If the model returned plain text → that's the final answer
+      // Model returned plain text — that is the final answer
       if (!choice.tool_calls || choice.tool_calls.length === 0) {
         return (choice.content ?? "").trim() || "(sin respuesta)";
       }
 
-      // Otherwise: append the assistant tool_calls message, then execute each
+      // Model requested tool calls — execute each and feed results back
       messages.push(choice);
       for (const tc of choice.tool_calls) {
         const result = await executeTool(ctx, tc.function.name, tc.function.arguments);
@@ -199,12 +214,13 @@ async function generateAssistantReply(
     }
   }
 
-  // ── Fallback (no API key or OpenAI failed) ────────────────────────────────
+  // ── Fallback (no API key or OpenAI call failed) ───────────────────────────
   const lastUserMessage = [...history].reverse().find((m) => m.role === "user")?.content ?? "";
   return craftReply(lastUserMessage, mode);
 }
 
 // ── Lightweight keyword-based fallback ───────────────────────────────────────
+/** Returns a canned response when the LLM is unavailable. */
 function craftReply(prompt: string, mode: Mode): string {
   const lower = prompt.toLowerCase().trim();
 
@@ -233,6 +249,10 @@ function craftReply(prompt: string, mode: Mode): string {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Derive a conversation title from the first user message.
+ * Truncates to 60 chars with an ellipsis so it fits sidebar items.
+ */
 function titleFromMessage(text: string): string {
   const clean = text.trim().replace(/\s+/g, " ");
   return clean.length > 60 ? clean.slice(0, 57) + "…" : clean;
@@ -244,13 +264,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await auth();
-  if (!session?.user?.email) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  if (!session?.user?.email) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const userId = await resolveUserId(session.user.email);
-  if (!userId) return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
+  if (!userId) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
   const { id } = await params;
-  if (!(await verifyOwner(id, userId))) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  if (!(await verifyOwner(id, userId))) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
 
   const { data, error } = await getSupabase()
     .from("chat_messages")
@@ -268,22 +288,23 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await auth();
-  if (!session?.user?.email) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  if (!session?.user?.email) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const userId = await resolveUserId(session.user.email);
-  if (!userId) return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
+  if (!userId) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
   const { id } = await params;
-  if (!(await verifyOwner(id, userId))) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  if (!(await verifyOwner(id, userId))) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
-  const content = String(body.content ?? "").trim();
-  const modeRaw = String(body.mode ?? "normal");
+  const content   = String(body.content ?? "").trim();
+  const modeRaw   = String(body.mode ?? "normal");
   const mode: Mode = modeRaw === "think" || modeRaw === "deep" ? modeRaw : "normal";
-  const clientTz = typeof body.timezone === "string" ? body.timezone : undefined;
+  // Client sends its local timezone so the model creates events in the right zone
+  const clientTz  = typeof body.timezone   === "string" ? body.timezone   : undefined;
   const clientNow = typeof body.local_time === "string" ? body.local_time : undefined;
 
-  if (!content) return NextResponse.json({ error: "Mensaje vacío" }, { status: 400 });
+  if (!content) return NextResponse.json({ error: "Empty message" }, { status: 400 });
 
   // ── 1. Pull conversation history (used as context for the model) ──────────
   const { data: historyRows } = await getSupabase()
@@ -317,7 +338,9 @@ export async function POST(
     .single();
   if (botErr) return NextResponse.json({ error: botErr.message }, { status: 500 });
 
-  // ── 5. Update conversation timestamp and (if first message) auto-title ────
+  // ── 5. Update conversation timestamp; auto-title on the first message ─────
+  // We count only user messages so the title is derived from the opening
+  // question rather than an auto-generated assistant greeting.
   const userMessageCount = history.filter((m) => m.role === "user").length;
   const isFirstUserMessage = userMessageCount === 1;
   const convPatch: Record<string, unknown> = { updated_at: new Date().toISOString() };

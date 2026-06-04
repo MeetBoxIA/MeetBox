@@ -24,7 +24,7 @@ export const MEETY_TOOLS = [
     function: {
       name: "get_today_meetings",
       description:
-        "Devuelve las reuniones, eventos y recordatorios del usuario para HOY, ordenados por hora. Incluye sala asociada si la hay. Úsalo cuando el usuario pregunte por su día.",
+        "Returns the user's meetings, events, and reminders for TODAY, ordered by time. Includes the associated room if any. Use when the user asks about their day.",
       parameters: { type: "object", properties: {}, required: [] },
     },
   },
@@ -33,12 +33,12 @@ export const MEETY_TOOLS = [
     function: {
       name: "get_events_in_range",
       description:
-        "Devuelve los eventos del usuario en un rango de fechas (inclusive). Útil para 'esta semana', 'mañana', 'el próximo mes'.",
+        "Returns the user's events within a date range (inclusive). Useful for 'this week', 'tomorrow', 'next month'.",
       parameters: {
         type: "object",
         properties: {
-          start: { type: "string", description: "Fecha de inicio en formato YYYY-MM-DD" },
-          end:   { type: "string", description: "Fecha de fin en formato YYYY-MM-DD"   },
+          start: { type: "string", description: "Start date in YYYY-MM-DD format" },
+          end:   { type: "string", description: "End date in YYYY-MM-DD format"   },
         },
         required: ["start", "end"],
       },
@@ -49,17 +49,17 @@ export const MEETY_TOOLS = [
     function: {
       name: "create_event",
       description:
-        "Crea un nuevo evento en el calendario del usuario. Confirma antes con el usuario si no estás seguro de los datos.",
+        "Creates a new event on the user's calendar. Confirm with the user if any data is uncertain.",
       parameters: {
         type: "object",
         properties: {
-          title:       { type: "string", description: "Título corto del evento" },
-          type:        { type: "string", enum: ["meeting", "event", "reminder"], description: "Tipo: reunión, evento o recordatorio" },
-          start_at:    { type: "string", description: "Inicio en ISO 8601 con timezone (e.g. 2026-06-03T10:00:00-05:00)" },
-          end_at:      { type: "string", description: "Fin en ISO 8601 (opcional, por defecto +1 hora)" },
-          all_day:     { type: "boolean", description: "Si es todo el día" },
-          location:    { type: "string", description: "Ubicación o URL (opcional)" },
-          description: { type: "string", description: "Descripción o agenda (opcional)" },
+          title:       { type: "string", description: "Short event title" },
+          type:        { type: "string", enum: ["meeting", "event", "reminder"], description: "Type: meeting, event, or reminder" },
+          start_at:    { type: "string", description: "Start in ISO 8601 with timezone (e.g. 2026-06-03T10:00:00-05:00)" },
+          end_at:      { type: "string", description: "End in ISO 8601 (optional, defaults to +1 hour)" },
+          all_day:     { type: "boolean", description: "Whether it's an all-day event" },
+          location:    { type: "string", description: "Location or URL (optional)" },
+          description: { type: "string", description: "Description or agenda (optional)" },
         },
         required: ["title", "start_at"],
       },
@@ -69,11 +69,11 @@ export const MEETY_TOOLS = [
     type: "function" as const,
     function: {
       name: "update_event",
-      description: "Actualiza campos de un evento existente del usuario.",
+      description: "Updates fields on an existing user event.",
       parameters: {
         type: "object",
         properties: {
-          id:          { type: "string", description: "ID del evento a editar" },
+          id:          { type: "string", description: "ID of the event to edit" },
           title:       { type: "string" },
           start_at:    { type: "string" },
           end_at:      { type: "string" },
@@ -88,11 +88,11 @@ export const MEETY_TOOLS = [
     type: "function" as const,
     function: {
       name: "delete_event",
-      description: "Elimina un evento del calendario. Pide confirmación al usuario antes de llamar.",
+      description: "Deletes a calendar event. Ask the user for confirmation before calling.",
       parameters: {
         type: "object",
         properties: {
-          id: { type: "string", description: "ID del evento a eliminar" },
+          id: { type: "string", description: "ID of the event to delete" },
         },
         required: ["id"],
       },
@@ -102,7 +102,7 @@ export const MEETY_TOOLS = [
     type: "function" as const,
     function: {
       name: "list_rooms",
-      description: "Lista todas las salas del usuario, con cuántas personas y reuniones de hoy tiene cada una.",
+      description: "Lists all of the user's rooms, with member count and today's meeting count for each.",
       parameters: { type: "object", properties: {}, required: [] },
     },
   },
@@ -110,10 +110,10 @@ export const MEETY_TOOLS = [
     type: "function" as const,
     function: {
       name: "get_room_detail",
-      description: "Devuelve el detalle de una sala: personas asignadas y reuniones de hoy.",
+      description: "Returns details for a room: assigned members and today's meetings.",
       parameters: {
         type: "object",
-        properties: { id: { type: "string", description: "ID de la sala" } },
+        properties: { id: { type: "string", description: "Room ID" } },
         required: ["id"],
       },
     },
@@ -122,7 +122,7 @@ export const MEETY_TOOLS = [
     type: "function" as const,
     function: {
       name: "list_notebooks",
-      description: "Lista los cuadernos del usuario en MeetBook, con su número de notas.",
+      description: "Lists the user's MeetBook notebooks with their note count.",
       parameters: { type: "object", properties: {}, required: [] },
     },
   },
@@ -130,10 +130,10 @@ export const MEETY_TOOLS = [
     type: "function" as const,
     function: {
       name: "list_notes",
-      description: "Lista las notas dentro de un cuaderno específico.",
+      description: "Lists notes inside a specific notebook.",
       parameters: {
         type: "object",
-        properties: { notebook_id: { type: "string", description: "ID del cuaderno" } },
+        properties: { notebook_id: { type: "string", description: "Notebook ID" } },
         required: ["notebook_id"],
       },
     },
@@ -142,13 +142,13 @@ export const MEETY_TOOLS = [
     type: "function" as const,
     function: {
       name: "create_note",
-      description: "Crea una nota en un cuaderno. Pide el cuaderno al usuario si no lo sabes.",
+      description: "Creates a note in a notebook. Ask the user which notebook if unknown.",
       parameters: {
         type: "object",
         properties: {
           notebook_id: { type: "string" },
           title:       { type: "string" },
-          content:     { type: "string", description: "Contenido en texto plano o markdown" },
+          content:     { type: "string", description: "Content in plain text or markdown" },
         },
         required: ["notebook_id", "title"],
       },
@@ -158,11 +158,11 @@ export const MEETY_TOOLS = [
     type: "function" as const,
     function: {
       name: "list_recent_recordings",
-      description: "Lista las grabaciones más recientes del usuario.",
+      description: "Lists the user's most recent recordings.",
       parameters: {
         type: "object",
         properties: {
-          limit: { type: "integer", description: "Número de grabaciones a devolver (por defecto 10)" },
+          limit: { type: "integer", description: "Number of recordings to return (default 10)" },
         },
       },
     },
@@ -172,24 +172,37 @@ export const MEETY_TOOLS = [
 // ── Executor ───────────────────────────────────────────────────────────────
 type ToolArgs = Record<string, unknown>;
 
+/** Wrap a successful result as a JSON string the model can parse. */
 function ok(payload: unknown): string {
   return JSON.stringify({ ok: true, data: payload });
 }
+/** Wrap an error message as a JSON string the model can parse. */
 function err(message: string): string {
   return JSON.stringify({ ok: false, error: message });
 }
 
+/** Return midnight (local server time) as an ISO string for today's date. */
 function startOfDayISO(d = new Date()): string {
   const x = new Date(d); x.setHours(0, 0, 0, 0); return x.toISOString();
 }
+/** Return 23:59:59.999 (local server time) as an ISO string for today's date. */
 function endOfDayISO(d = new Date()): string {
   const x = new Date(d); x.setHours(23, 59, 59, 999); return x.toISOString();
 }
 
+/**
+ * Execute a tool call on behalf of the authenticated user.
+ * All queries are scoped to `ctx.userId` to prevent cross-user data access.
+ *
+ * @param ctx  - Caller's userId and email (from the session).
+ * @param name - Tool name matching one of the MEETY_TOOLS schemas.
+ * @param raw  - Raw JSON string of tool arguments from the LLM.
+ * @returns    JSON string with `{ ok, data }` or `{ ok: false, error }`.
+ */
 export async function executeTool(ctx: ToolContext, name: string, raw: string): Promise<string> {
   let args: ToolArgs = {};
   try { args = raw ? JSON.parse(raw) : {}; }
-  catch { return err("Argumentos JSON inválidos"); }
+  catch { return err("Invalid JSON arguments"); }
 
   const db = getSupabase();
 
@@ -219,7 +232,7 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
       case "get_events_in_range": {
         const start = String(args.start);
         const end   = String(args.end);
-        if (!start || !end) return err("start y end son requeridos");
+        if (!start || !end) return err("start and end are required");
         const { data, error } = await db
           .from("calendar_events")
           .select("id, title, type, start_at, end_at, all_day, location, description, room_id")
@@ -236,10 +249,11 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
       case "create_event": {
         const title    = String(args.title ?? "").trim();
         const start_at = String(args.start_at ?? "");
-        if (!title || !start_at) return err("title y start_at son obligatorios");
+        if (!title || !start_at) return err("title and start_at are required");
 
-        const type     = String(args.type ?? "meeting") as "meeting" | "event" | "reminder";
-        const color    = { meeting: "#050040", event: "#059669", reminder: "#d97706" }[type];
+        const type  = String(args.type ?? "meeting") as "meeting" | "event" | "reminder";
+        // Deterministic color per event type keeps the calendar visually consistent
+        const color = { meeting: "#050040", event: "#059669", reminder: "#d97706" }[type];
 
         const { data, error } = await db
           .from("calendar_events")
@@ -264,7 +278,8 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
 
       case "update_event": {
         const id = String(args.id ?? "");
-        if (!id) return err("id es obligatorio");
+        if (!id) return err("id is required");
+        // Build patch dynamically so only provided fields are updated
         const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
         for (const k of ["title", "start_at", "end_at", "location", "description"]) {
           if (args[k] !== undefined) patch[k] = args[k];
@@ -273,7 +288,7 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
           .from("calendar_events")
           .update(patch)
           .eq("id", id)
-          .eq("user_id", ctx.userId)
+          .eq("user_id", ctx.userId) // ownership guard
           .select("id, title, start_at, end_at")
           .single();
         if (error) return err(error.message);
@@ -282,7 +297,7 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
 
       case "delete_event": {
         const id = String(args.id ?? "");
-        if (!id) return err("id es obligatorio");
+        if (!id) return err("id is required");
         const { error } = await db
           .from("calendar_events").delete().eq("id", id).eq("user_id", ctx.userId);
         if (error) return err(error.message);
@@ -298,6 +313,7 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
           .order("created_at", { ascending: true });
         if (error) return err(error.message);
 
+        // Run member count and today-meeting count in parallel per room
         const enriched = await Promise.all((rooms ?? []).map(async (r) => {
           const [{ count: members }, { count: today }] = await Promise.all([
             db.from("room_members").select("id", { count: "exact", head: true }).eq("room_id", r.id),
@@ -313,11 +329,11 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
 
       case "get_room_detail": {
         const id = String(args.id ?? "");
-        if (!id) return err("id es obligatorio");
+        if (!id) return err("id is required");
 
         const { data: room, error: roomErr } = await db
           .from("rooms").select("*").eq("id", id).eq("user_id", ctx.userId).single();
-        if (roomErr || !room) return err("Sala no encontrada");
+        if (roomErr || !room) return err("Room not found");
 
         const { data: members } = await db
           .from("room_members").select("id, name, email").eq("room_id", id);
@@ -337,10 +353,11 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
           .from("notebooks")
           .select("id, title, emoji")
           .eq("user_id", ctx.userId)
-          .is("deleted_at", null)
+          .is("deleted_at", null) // soft-delete filter
           .order("created_at", { ascending: true });
         if (error) return err(error.message);
 
+        // Attach live note count to each notebook
         const enriched = await Promise.all((data ?? []).map(async (nb) => {
           const { count } = await db
             .from("notes").select("id", { count: "exact", head: true })
@@ -352,13 +369,14 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
 
       case "list_notes": {
         const notebookId = String(args.notebook_id ?? "");
-        if (!notebookId) return err("notebook_id es obligatorio");
+        if (!notebookId) return err("notebook_id is required");
         const { data, error } = await db
           .from("notes")
           .select("id, title, emoji, is_pinned, updated_at")
           .eq("notebook_id", notebookId)
           .eq("user_id", ctx.userId)
           .is("deleted_at", null)
+          // Pinned notes float to the top, then sorted by most recently edited
           .order("is_pinned", { ascending: false })
           .order("updated_at", { ascending: false })
           .limit(50);
@@ -368,9 +386,9 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
 
       case "create_note": {
         const notebookId = String(args.notebook_id ?? "");
-        const title      = String(args.title ?? "").trim() || "Sin título";
+        const title      = String(args.title ?? "").trim() || "Untitled";
         const content    = String(args.content ?? "");
-        if (!notebookId) return err("notebook_id es obligatorio");
+        if (!notebookId) return err("notebook_id is required");
         const { data, error } = await db
           .from("notes")
           .insert({
@@ -388,6 +406,7 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
 
       // ── Recordings ───────────────────────────────────────────────────────
       case "list_recent_recordings": {
+        // Cap at 50 to prevent accidental large payloads to the LLM
         const limit = Math.min(50, Number(args.limit ?? 10));
         const { data, error } = await db
           .from("meeting_recordings")
@@ -400,9 +419,9 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
       }
 
       default:
-        return err(`Tool desconocida: ${name}`);
+        return err(`Unknown tool: ${name}`);
     }
   } catch (e) {
-    return err(e instanceof Error ? e.message : "Error desconocido");
+    return err(e instanceof Error ? e.message : "Unknown error");
   }
 }

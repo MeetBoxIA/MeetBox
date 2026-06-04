@@ -1,3 +1,12 @@
+/**
+ * NextAuth v5 configuration for MeetBox.
+ * Supports two providers:
+ *   - Google OAuth  — upserts the user row in Supabase on every sign-in
+ *   - Credentials   — email+password OR post-OTP-verification shortcut
+ *
+ * The JWT strategy stores the Supabase UUID (not the OAuth sub) so every
+ * API route receives the correct internal ID via session.user.id.
+ */
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
@@ -13,9 +22,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     Credentials({
       name: "credentials",
       credentials: {
-        email:       { label: "Email",        type: "email"    },
-        password:    { label: "Contraseña",   type: "password" },
-        otpVerified: { label: "OTP verified", type: "text"     },
+        email:       { label: "Email",    type: "email"    },
+        password:    { label: "Password", type: "password" },
+        otpVerified: { label: "OTP verified", type: "text" },
       },
       async authorize(credentials) {
         const email       = credentials?.email       as string;
@@ -25,7 +34,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         const db = getSupabase();
 
-        // ── Post-registro (OTP verificado → usuario ya guardado en DB) ──
+        // ── Post-registration shortcut (OTP already verified) ──────────
+        // The register flow saves the user to DB and then calls signIn
+        // with otpVerified="true" to skip the password check entirely.
         if (otpVerified === "true") {
           const { data: user } = await db
             .from("users")
@@ -36,12 +47,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return { id: user.id, email: user.email, name: user.name, image: user.avatar_url };
         }
 
-        // ── Login normal con email + contraseña ──────────────────────────
+        // ── Normal email + password login ──────────────────────────────
         const { data: user } = await db
           .from("users")
           .select("id, name, email, password_hash, avatar_url")
           .eq("email", email)
-          .eq("provider", "email")
+          .eq("provider", "email") // prevent Google users from logging in with a password
           .single<DbUser>();
         if (!user || !user.password_hash) return null;
 
@@ -57,7 +68,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   session: { strategy: "jwt" },
 
   callbacks: {
-    // Guardar/actualizar usuario de Google en Supabase al primer login
+    // Upsert the Google user into Supabase on every OAuth sign-in so the
+    // profile (name, avatar) stays fresh if the user updates it in Google.
     async signIn({ user, account }) {
       if (account?.provider === "google" && user.email) {
         const db = getSupabase();
@@ -78,8 +90,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (user?.id)    token.id      = user.id;
       if (user?.image) token.picture = user.image;
 
-      // Para Google, user.id es el sub de OAuth, no el UUID de Supabase.
-      // Consultamos el UUID real y el avatar actualizado desde nuestra DB.
+      // For Google, user.id is the OAuth sub — not our Supabase UUID.
+      // We look up the real UUID and the latest avatar so the token always
+      // carries the correct internal ID even after the first sign-in.
       if (account?.provider === "google" && user?.email) {
         const { data } = await getSupabase()
           .from("users")

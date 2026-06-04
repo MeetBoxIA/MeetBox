@@ -13,6 +13,7 @@ import {
   Monitor, Copy, RefreshCw, Download,
 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
+import { useTranslation, type Locale } from "@/lib/i18n";
 import { SiSlack, SiGooglecalendar, SiJira, SiNotion } from "react-icons/si";
 import { TbBrandTeams, TbBrandZoom } from "react-icons/tb";
 import { signOut } from "next-auth/react";
@@ -1441,8 +1442,16 @@ function SettingsSecurity() {
 
 // ── Settings: Cuenta ──────────────────────────────────────────────────────────
 function SettingsAccount({ user }: { user: User }) {
+  const { t, locale, setLocale } = useTranslation();
   const [confirmDelete, setConfirmDelete] = React.useState("");
   const [showDialog,    setShowDialog]    = React.useState(false);
+  const [langSaved,     setLangSaved]     = React.useState(false);
+
+  function handleLocale(l: Locale) {
+    setLocale(l);
+    setLangSaved(true);
+    setTimeout(() => setLangSaved(false), 2000);
+  }
 
   return (
     <div className="max-w-2xl space-y-5">
@@ -1450,30 +1459,61 @@ function SettingsAccount({ user }: { user: User }) {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/undraw_budgeting_klon.svg" alt="" className="hidden sm:block w-24 h-auto shrink-0 object-contain" draggable={false} />
         <div>
-          <h2 className="text-2xl font-bold text-[#050040]">Cuenta</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Gestiona tu plan y datos de cuenta</p>
+          <h2 className="text-2xl font-bold text-[#050040]">{t("settings_account_title")}</h2>
+          <p className="text-sm text-slate-500 mt-0.5">{t("settings_account_desc")}</p>
         </div>
       </div>
 
+      {/* Language selector */}
+      <SettingsCard title={t("language")} desc={t("language_desc")}>
+        <div className="flex items-center gap-3">
+          {(["es", "en"] as Locale[]).map((l) => (
+            <button
+              key={l}
+              onClick={() => handleLocale(l)}
+              className={cn(
+                "flex items-center gap-2.5 px-5 py-3 rounded-xl border text-sm font-semibold transition-all",
+                locale === l
+                  ? "bg-[#050040] text-white border-[#050040] shadow-sm"
+                  : "bg-slate-50 text-slate-600 border-slate-200 hover:border-[#050040]/30",
+              )}
+            >
+              <span className="text-base leading-none">{l === "es" ? "🇪🇸" : "🇺🇸"}</span>
+              {t(l === "es" ? "language_es" : "language_en")}
+              {locale === l && <Check className="w-3.5 h-3.5" />}
+            </button>
+          ))}
+          {langSaved && (
+            <span className="flex items-center gap-1 text-xs font-medium bg-green-50 text-green-700 border border-green-200 px-3 py-1.5 rounded-xl ml-auto">
+              <CheckCircle2 className="w-3.5 h-3.5" />{t("language_saved")}
+            </span>
+          )}
+        </div>
+      </SettingsCard>
+
       {/* Plan */}
-      <SettingsCard title="Plan actual" desc="Tu suscripción activa en MeetBox">
+      <SettingsCard title={t("current_plan")} desc={t("current_plan_desc")}>
         <div className="flex items-center gap-4 p-4 rounded-xl bg-[#050040]/4 border border-[#050040]/10">
           <div className="w-10 h-10 rounded-xl bg-[#050040] flex items-center justify-center shrink-0">
             <Zap className="w-5 h-5 text-white" />
           </div>
           <div className="flex-1">
             <p className="text-sm font-semibold text-[#050040]">Plan Free</p>
-            <p className="text-xs text-slate-500 mt-0.5">Hasta 5 reuniones/mes · 1 integración · Transcripción básica</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {locale === "en"
+                ? "Up to 5 meetings/month · 1 integration · Basic transcription"
+                : "Hasta 5 reuniones/mes · 1 integración · Transcripción básica"}
+            </p>
           </div>
           <button className="shrink-0 px-4 py-2 bg-[#050040] text-white rounded-xl text-xs font-semibold hover:bg-[#050040]/90 transition">
-            Mejorar plan
+            {t("upgrade")}
           </button>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-3">
           {[
-            { label: "Reuniones",    value: "3 / 5",   pct: 60 },
-            { label: "Integraciones",value: "1 / 1",   pct: 100 },
-            { label: "Almacenamiento",value: "120 MB", pct: 24 },
+            { label: locale === "en" ? "Meetings"      : "Reuniones",     value: "3 / 5",   pct: 60  },
+            { label: locale === "en" ? "Integrations"  : "Integraciones", value: "1 / 1",   pct: 100 },
+            { label: locale === "en" ? "Storage"       : "Almacenamiento",value: "120 MB",  pct: 24  },
           ].map(({ label, value, pct }) => (
             <div key={label} className="bg-white rounded-xl border border-slate-100 p-3">
               <p className="text-xs text-slate-500 mb-1">{label}</p>
@@ -1487,12 +1527,12 @@ function SettingsAccount({ user }: { user: User }) {
       </SettingsCard>
 
       {/* Export data */}
-      <SettingsCard title="Tus datos" desc="Descarga o exporta tu información">
+      <SettingsCard title={t("your_data")} desc={t("your_data_desc")}>
         <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:border-[#050040]/30 hover:text-[#050040] transition-all">
           <FileText className="w-4 h-4" />
-          Exportar todos mis datos
+          {t("export_data")}
         </button>
-        <p className="text-xs text-slate-400 mt-2">Se generará un archivo ZIP con tus reuniones, transcripciones y configuración</p>
+        <p className="text-xs text-slate-400 mt-2">{t("export_desc")}</p>
       </SettingsCard>
 
       {/* Danger zone */}
@@ -1500,8 +1540,8 @@ function SettingsAccount({ user }: { user: User }) {
         <div className="flex items-start gap-3 mb-4">
           <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
           <div>
-            <h3 className="text-sm font-semibold text-red-700">Zona de peligro</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Estas acciones son irreversibles</p>
+            <h3 className="text-sm font-semibold text-red-700">{t("danger_zone")}</h3>
+            <p className="text-xs text-slate-400 mt-0.5">{t("danger_zone_desc")}</p>
           </div>
         </div>
         <button
@@ -1509,7 +1549,7 @@ function SettingsAccount({ user }: { user: User }) {
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-50 border border-red-200 text-sm font-semibold text-red-600 hover:bg-red-100 transition-all"
         >
           <Trash2 className="w-4 h-4" />
-          Eliminar mi cuenta
+          {t("delete_account")}
         </button>
       </div>
 
@@ -1523,12 +1563,18 @@ function SettingsAccount({ user }: { user: User }) {
                 <Trash2 className="w-5 h-5 text-red-500" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-slate-800">¿Eliminar cuenta?</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Esta acción no se puede deshacer</p>
+                <h3 className="text-sm font-semibold text-slate-800">
+                  {locale === "en" ? "Delete account?" : "¿Eliminar cuenta?"}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {locale === "en" ? "This action cannot be undone" : "Esta acción no se puede deshacer"}
+                </p>
               </div>
             </div>
             <p className="text-xs text-slate-500 mb-4">
-              Escribe <span className="font-semibold text-slate-700">{user.email}</span> para confirmar.
+              {locale === "en" ? "Type" : "Escribe"}{" "}
+              <span className="font-semibold text-slate-700">{user.email}</span>{" "}
+              {locale === "en" ? "to confirm." : "para confirmar."}
             </p>
             <input
               type="text"
@@ -1542,13 +1588,13 @@ function SettingsAccount({ user }: { user: User }) {
                 onClick={() => setShowDialog(false)}
                 className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition"
               >
-                Cancelar
+                {t("cancel")}
               </button>
               <button
                 disabled={confirmDelete !== user.email}
                 className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold disabled:opacity-40 hover:bg-red-600 transition"
               >
-                Eliminar
+                {t("delete")}
               </button>
             </div>
           </div>

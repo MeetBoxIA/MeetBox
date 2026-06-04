@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { SessionProvider } from "@/components/ui/session-provider";
 import { ThemeProvider } from "@/lib/theme";
+import { I18nProvider } from "@/lib/i18n";
 
 export const metadata: Metadata = {
   title: "MeetBox",
@@ -26,7 +27,9 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeProvider>
-          <SessionProvider>{children}</SessionProvider>
+          <I18nProvider>
+            <SessionProvider>{children}</SessionProvider>
+          </I18nProvider>
         </ThemeProvider>
       </body>
     </html>
