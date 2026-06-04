@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { saveOTP } from "@/lib/otp-store";
 import { sendEmail } from "@/lib/email";
+import { OtpSendSchema } from "@/lib/validators";
 
 /** Generate a 4-digit code in the range [1000, 9999]. */
 function generateCode() {
@@ -37,10 +38,12 @@ const emailHtml = (code: string) => `
 `;
 
 export async function POST(req: NextRequest) {
-  const { email } = await req.json();
-  if (!email || typeof email !== "string") {
-    return NextResponse.json({ error: "Email required" }, { status: 400 });
+  const body   = await req.json().catch(() => ({}));
+  const result = OtpSendSchema.safeParse(body);
+  if (!result.success) {
+    return NextResponse.json({ error: "Email inválido o faltante." }, { status: 400 });
   }
+  const { email } = result.data;
 
   const code = generateCode();
   // Save before attempting to send so the code is valid even if send fails
