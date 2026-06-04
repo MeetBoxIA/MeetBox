@@ -100,6 +100,9 @@ function createWindow(): void {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
+      // Necesario para que el renderer pueda hacer fetch a localhost
+      // sin que Chromium rechace la request por CORS / null-origin.
+      webSecurity: false,
     },
   })
 
@@ -279,6 +282,23 @@ function registerIpcHandlers(): void {
 
   // ── Auto-updater install ─────────────────────────────────────────────────────
   ipcMain.on('install-update', () => autoUpdater.quitAndInstall())
+
+  // ── HTTP proxy — Node.js no tiene restricciones CORS ─────────────────────────
+  // El renderer llama a este handler para hacer requests al backend web
+  // sin que Chromium las bloquee por CORS / null-origin.
+  ipcMain.handle('http-post', async (_e, url: string, body: unknown) => {
+    try {
+      const res  = await fetch(url, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(body),
+      })
+      const data = await res.json().catch(() => ({}))
+      return { ok: res.ok, status: res.status, data }
+    } catch (err) {
+      return { ok: false, status: 0, data: { error: err instanceof Error ? err.message : 'Error de red' } }
+    }
+  })
 }
 
 // ── Ciclo de vida ──────────────────────────────────────────────────────────────

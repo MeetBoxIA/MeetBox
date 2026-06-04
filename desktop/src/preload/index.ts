@@ -61,6 +61,10 @@ const api = {
   // ── Auto-updater ─────────────────────────────────────────────────────────────
   installUpdate: () => ipcRenderer.send('install-update'),
 
+  // ── HTTP proxy via Node.js (sin CORS) ─────────────────────────────────────────
+  httpPost: (url: string, body: unknown): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> =>
+    ipcRenderer.invoke('http-post', url, body),
+
   // ── Escuchar eventos desde el main process ────────────────────────────────────
   on: (
     channel: 'tray-toggle-recording' | 'update-available' | 'update-downloaded' | 'auth-token-received',

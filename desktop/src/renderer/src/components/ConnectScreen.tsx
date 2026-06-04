@@ -29,33 +29,32 @@ export default function ConnectScreen({ onConnected }: ConnectScreenProps) {
     setError(null)
 
     try {
-      const res  = await fetch(`${MEETBOX_API}/api/auth/desktop/connect`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ token: normalized }),
-      })
-      const data = await res.json()
+      // Usar el proxy IPC del main process (Node.js) para evitar bloqueos CORS/HTTPS
+      const { ok, data } = await window.electronAPI.httpPost(
+        `${MEETBOX_API}/api/auth/desktop/connect`,
+        { token: normalized },
+      )
 
-      if (!res.ok) {
-        setError(data.error ?? 'Código inválido. Verifica e intenta de nuevo.')
+      if (!ok) {
+        setError((data.error as string) ?? 'Código inválido. Verifica e intenta de nuevo.')
         setLoading(false)
         return
       }
 
+      const userData = data.user as ConnectionData['user']
       const connection: ConnectionData = {
         token:       normalized,
-        user:        data.user,
+        user:        userData,
         connectedAt: new Date().toISOString(),
       }
 
       await window.electronAPI.saveConnection(connection)
-      setUser(data.user)
+      setUser(userData)
       setStep('success')
 
-      // Avanzar a la pantalla principal tras 1.5s
       setTimeout(() => onConnected(connection), 1500)
-    } catch {
-      setError('No se pudo conectar. Verifica tu conexión a internet.')
+    } catch (err) {
+      setError('No se pudo conectar: ' + (err instanceof Error ? err.message : String(err)))
       setLoading(false)
     }
   }
