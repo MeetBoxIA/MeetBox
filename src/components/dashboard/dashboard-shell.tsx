@@ -1065,67 +1065,93 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
   const connectedCount = connected.length + customList.length;
 
   return (
-    <div className="max-w-3xl space-y-6">
-      {/* Hero banner */}
-      <div className="relative bg-white rounded-2xl border border-slate-100 overflow-hidden px-6 py-5 flex items-center gap-6">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/undraw_programming_j1zw.svg" alt="" className="hidden sm:block w-28 h-auto shrink-0 object-contain" draggable={false} />
+    <div className="space-y-8">
+
+      {/* ── Page header ── */}
+      <div className="flex items-end justify-between">
         <div>
           <h2 className="text-2xl font-bold text-[#050040]">{t("integrations_title")}</h2>
-          <p className="text-sm text-slate-500 mt-0.5">
-            {t("integrations_desc")} · <span className="font-medium text-slate-700">{connectedCount} {t("connected").toLowerCase()}</span>
-          </p>
+          <p className="text-sm text-slate-500 mt-1">{t("integrations_desc")}</p>
         </div>
+        {connectedCount > 0 && (
+          <span className="flex items-center gap-1.5 text-xs font-semibold bg-[#050040]/8 text-[#050040] px-3 py-1.5 rounded-full">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            {connectedCount} {t("connected").toLowerCase()}
+          </span>
+        )}
       </div>
 
-      {/* MeetBox Desktop */}
+      {/* ── MeetBox Desktop (featured) ── */}
       <DesktopTokenCard />
 
-      <div className="space-y-3">
-        {INTEGRATION_LIST.map(({ id, label, color, Icon, desc }) => {
-          const isConnected = connected.includes(id);
-          const isLoading   = saving === id;
-          return (
-            <div key={id} className={cn(
-              "bg-white rounded-2xl border p-4 sm:p-5 flex items-center gap-4 transition-all",
-              isConnected ? "border-[#050040]/20 shadow-sm" : "border-slate-100",
-            )}>
-              <div className="w-12 h-12 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center shrink-0">
-                <Icon style={{ color }} className="w-6 h-6" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-slate-800">{label}</p>
+      {/* ── Integration grid ── */}
+      <div>
+        <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+          {t("integrations_title")}
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {INTEGRATION_LIST.map(({ id, label, color, Icon, desc }) => {
+            const isConnected = connected.includes(id);
+            const isLoading   = saving === id;
+            return (
+              <div key={id} className={cn(
+                "group bg-white rounded-2xl border p-5 flex flex-col gap-4 transition-all hover:shadow-md",
+                isConnected ? "border-[#050040]/20 shadow-sm" : "border-slate-100",
+              )}>
+                {/* Card header */}
+                <div className="flex items-start justify-between">
+                  <div
+                    className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm"
+                    style={{ backgroundColor: color + "15", border: `1px solid ${color}25` }}
+                  >
+                    <Icon style={{ color }} className="w-6 h-6" />
+                  </div>
                   {isConnected && (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">
-                      <Check className="w-3 h-3" />{t("connected")}
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-full shrink-0">
+                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                      {t("connected")}
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5 truncate">{desc}</p>
+                {/* Info */}
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-slate-800">{label}</p>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">{desc}</p>
+                </div>
+                {/* Action */}
+                <button
+                  onClick={() => toggle(id)}
+                  disabled={isLoading}
+                  className={cn(
+                    "w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all disabled:opacity-50",
+                    isConnected
+                      ? "bg-red-50 text-red-600 hover:bg-red-100 border border-red-100"
+                      : "bg-[#050040] text-white hover:bg-[#050040]/90",
+                  )}
+                >
+                  {isLoading ? "…" : isConnected
+                    ? <><Zap className="w-3.5 h-3.5" />{t("disconnect")}</>
+                    : <><Link2 className="w-3.5 h-3.5" />{t("connect")}</>
+                  }
+                </button>
               </div>
-              <button
-                onClick={() => toggle(id)}
-                disabled={isLoading}
-                className={cn(
-                  "shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50",
-                  isConnected
-                    ? "bg-red-50 text-red-600 hover:bg-red-100 border border-red-100"
-                    : "bg-[#050040] text-white hover:bg-[#050040]/90",
-                )}
-              >
-                {isLoading ? "…" : isConnected ? <><Zap className="w-3.5 h-3.5" />{t("disconnect")}</> : <><Link2 className="w-3.5 h-3.5" />{t("connect")}</>}
-              </button>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
-      {/* Custom integrations */}
-      <div className="bg-white rounded-2xl border border-slate-100 p-5">
-        <h3 className="text-sm font-semibold text-slate-800 mb-1">{t("other_tools")}</h3>
-        <p className="text-xs text-slate-400 mb-4">{t("other_tools_desc")}</p>
-        <div className="flex gap-2 mb-3">
+      {/* ── Custom integrations ── */}
+      <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+            <Plug2 className="w-4 h-4 text-slate-500" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800">{t("other_tools")}</h3>
+            <p className="text-xs text-slate-400 mt-0.5">{t("other_tools_desc")}</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
           <input
             type="text"
             value={customInput}
@@ -1134,12 +1160,12 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
             placeholder={t("tool_placeholder")}
             className="flex-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm placeholder:text-slate-400 outline-none focus:border-[#050040]/40 transition"
           />
-          <button onClick={addCustom} className="px-3 py-2 bg-[#050040] text-white rounded-xl text-sm font-semibold hover:bg-[#050040]/90 transition">
+          <button onClick={addCustom} className="flex items-center gap-1.5 px-4 py-2 bg-[#050040] text-white rounded-xl text-sm font-semibold hover:bg-[#050040]/90 transition">
             <Plus className="w-4 h-4" />
           </button>
         </div>
         {customList.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 mt-3">
             {customList.map((tag) => (
               <span key={tag} className="inline-flex items-center gap-1.5 bg-[#050040]/8 text-[#050040] rounded-xl px-3 py-1.5 text-xs font-medium">
                 {tag}
@@ -1202,110 +1228,133 @@ function SettingsProfile({ user, profile, onUpdate }: { user: User; profile: Pro
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-2xl space-y-5">
-      <div>
-        <h2 className="text-2xl font-bold text-[#050040]">{t("settings_profile_title")}</h2>
-        <p className="text-sm text-slate-500 mt-1">{t("settings_profile_desc")}</p>
+    <form onSubmit={handleSubmit} className="space-y-6">
+
+      {/* ── Page header with avatar ── */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-[#050040] via-[#0c0c63] to-[#1a1a8c] rounded-2xl px-6 py-8 flex items-center gap-6">
+        <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/5" />
+        <div className="absolute -bottom-16 right-1/4 w-40 h-40 rounded-full bg-white/5" />
+        <div className="relative flex items-center gap-5">
+          <Avatar name={user.name} image={user.image} size="md" />
+          <div>
+            <h2 className="text-xl font-bold text-white leading-tight">{user.name}</h2>
+            <p className="text-sm text-white/60 mt-0.5">{user.email}</p>
+          </div>
+        </div>
+        <div className="relative ml-auto hidden sm:block">
+          <div className="text-right">
+            <p className="text-xs text-white/40 uppercase tracking-wide">{t("settings_profile_title")}</p>
+            <p className="text-xs text-white/60 mt-0.5">{t("settings_profile_desc")}</p>
+          </div>
+        </div>
       </div>
 
-      {/* Personal info */}
-      <SettingsCard title={t("personal_info")} desc={t("personal_info_desc")}>
-        <div className="flex items-center gap-4 mb-5 pb-5 border-b border-slate-100">
-          <Avatar name={user.name} image={user.image} />
-          <div>
-            <p className="text-sm font-semibold text-slate-800">{user.name}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
-          </div>
-        </div>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              <User className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />{t("full_name")}
-            </label>
-            <input
-              type="text"
-              value={user.name}
-              readOnly
-              className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-500 cursor-not-allowed"
-            />
-            <p className="text-xs text-slate-400 mt-1">{t("name_managed_by_provider")}</p>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              <Mail className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />{t("email")}
-            </label>
-            <input
-              type="email"
-              value={user.email}
-              readOnly
-              className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-500 cursor-not-allowed"
-            />
-          </div>
-        </div>
-      </SettingsCard>
+      {/* ── 2-column grid ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-      {/* Organisation */}
-      <SettingsCard title={t("organization")} desc={t("organization_desc")}>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              <Building2 className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />{t("org_name")}
-            </label>
-            <input
-              type="text"
-              value={orgName}
-              onChange={(e) => setOrgName(e.target.value)}
-              placeholder={t("org_name_placeholder")}
-              className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-[#050040]/50 focus:ring-2 focus:ring-[#050040]/8 transition"
-            />
+        {/* Left — Personal info */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-5">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-7 h-7 rounded-lg bg-[#050040]/8 flex items-center justify-center shrink-0">
+              <User className="w-3.5 h-3.5 text-[#050040]" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{t("personal_info")}</p>
+              <p className="text-xs text-slate-400">{t("personal_info_desc")}</p>
+            </div>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-2">
-              <Users className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />{t("team_size")}
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {teamSizes.map(({ id, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setTeamSize(id)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
-                    teamSize === id
-                      ? "bg-[#050040] text-white border-[#050040]"
-                      : "bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
+          <div className="h-px bg-slate-100" />
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t("full_name")}</label>
+              <input
+                type="text" value={user.name} readOnly
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-500 cursor-not-allowed"
+              />
+              <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+                <Globe className="w-3 h-3 shrink-0" />{t("name_managed_by_provider")}
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t("email")}</label>
+              <input
+                type="email" value={user.email} readOnly
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-500 cursor-not-allowed"
+              />
             </div>
           </div>
         </div>
-      </SettingsCard>
 
-      {/* Meeting preferences */}
-      <SettingsCard title={t("meeting_types")} desc={t("meeting_types_desc")}>
-        <div className="flex flex-wrap gap-2">
+        {/* Right — Organisation */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-5">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-7 h-7 rounded-lg bg-[#050040]/8 flex items-center justify-center shrink-0">
+              <Building2 className="w-3.5 h-3.5 text-[#050040]" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{t("organization")}</p>
+              <p className="text-xs text-slate-400">{t("organization_desc")}</p>
+            </div>
+          </div>
+          <div className="h-px bg-slate-100" />
+          <div className="space-y-5">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t("org_name")}</label>
+              <input
+                type="text" value={orgName} onChange={(e) => setOrgName(e.target.value)}
+                placeholder={t("org_name_placeholder")}
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-[#050040]/50 focus:ring-2 focus:ring-[#050040]/8 transition"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-2 flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5" />{t("team_size")}
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {teamSizes.map(({ id, label }) => (
+                  <button key={id} type="button" onClick={() => setTeamSize(id)}
+                    className={cn(
+                      "py-2 rounded-xl text-xs font-semibold border transition-all text-center",
+                      teamSize === id ? "bg-[#050040] text-white border-[#050040]" : "bg-slate-50 text-slate-600 border-slate-200 hover:border-[#050040]/30",
+                    )}
+                  >{label}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Meeting types — full width ── */}
+      <div className="bg-white rounded-2xl border border-slate-100 p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-7 h-7 rounded-lg bg-[#050040]/8 flex items-center justify-center shrink-0">
+            <Video className="w-3.5 h-3.5 text-[#050040]" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-800">{t("meeting_types")}</p>
+            <p className="text-xs text-slate-400">{t("meeting_types_desc")}</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {meetingTypeOpts.map(({ id, label }) => {
             const active = meetingTypes.includes(id);
+            const icons: Record<string, string> = { presencial: "🏢", virtual: "💻", hibrida: "🔀" };
             return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => toggleMeeting(id)}
+              <button key={id} type="button" onClick={() => toggleMeeting(id)}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border transition-all",
-                  active ? "bg-[#050040] text-white border-[#050040]" : "bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300",
+                  "flex items-center gap-3 p-4 rounded-xl border text-left transition-all",
+                  active ? "bg-[#050040] text-white border-[#050040] shadow-sm" : "bg-slate-50 text-slate-600 border-slate-200 hover:border-[#050040]/30",
                 )}
               >
-                {active && <Check className="w-3.5 h-3.5" />}
-                {label}
+                <span className="text-lg leading-none">{icons[id]}</span>
+                <span className="text-sm font-semibold">{label}</span>
+                {active && <Check className="w-4 h-4 ml-auto shrink-0" />}
               </button>
             );
           })}
         </div>
-      </SettingsCard>
+      </div>
 
       {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2.5">{error}</p>}
       <div className="flex justify-end"><SaveBtn loading={loading} saved={saved} /></div>
@@ -1335,44 +1384,79 @@ function SettingsNotifications() {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  const rows: { key: keyof typeof prefs; label: string; desc: string; icon: React.ElementType }[] = [
-    { key: "meetings",     label: "Recordatorios de reuniones",  desc: "15 minutos antes de cada reunión programada",    icon: Calendar  },
-    { key: "weekly",       label: "Resumen semanal por email",   desc: "Todos los lunes con el resumen de la semana",    icon: Mail      },
-    { key: "browser",      label: "Notificaciones del navegador",desc: "Alertas en tiempo real dentro del navegador",    icon: Globe     },
-    { key: "integrations", label: "Alertas de integración",      desc: "Cuando hay errores de sincronización",           icon: Plug2     },
-    { key: "transcripts",  label: "Nuevas transcripciones",      desc: "Cuando se termina de procesar una grabación",    icon: FileText  },
+  const { t } = useTranslation();
+  const rows: { key: keyof typeof prefs; label: string; desc: string; icon: React.ElementType; color: string }[] = [
+    { key: "meetings",     label: t("notif_meetings_label"),     desc: t("notif_meetings_desc"),     icon: Calendar,  color: "#050040" },
+    { key: "weekly",       label: t("notif_weekly_label"),       desc: t("notif_weekly_desc"),       icon: Mail,      color: "#7c3aed" },
+    { key: "browser",      label: t("notif_browser_label"),      desc: t("notif_browser_desc"),      icon: Globe,     color: "#0891b2" },
+    { key: "integrations", label: t("notif_integrations_label"), desc: t("notif_integrations_desc"), icon: Plug2,     color: "#d97706" },
+    { key: "transcripts",  label: t("notif_transcripts_label"),  desc: t("notif_transcripts_desc"),  icon: FileText,  color: "#059669" },
   ];
 
   return (
-    <div className="max-w-2xl space-y-5">
-      <div className="flex items-start justify-between">
+    <div className="space-y-6">
+
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-[#050040]">Notificaciones</h2>
-          <p className="text-sm text-slate-500 mt-1">Controla cómo y cuándo MeetBox te avisa</p>
+          <h2 className="text-2xl font-bold text-[#050040]">{t("settings_notif_title")}</h2>
+          <p className="text-sm text-slate-500 mt-1">{t("settings_notif_desc")}</p>
         </div>
         {saved && (
-          <span className="flex items-center gap-1 text-xs font-medium bg-green-50 text-green-700 border border-green-200 px-3 py-1.5 rounded-xl">
-            <CheckCircle2 className="w-3.5 h-3.5" />Guardado
+          <span className="flex items-center gap-1.5 text-xs font-semibold bg-green-50 text-green-700 border border-green-200 px-3 py-1.5 rounded-full">
+            <CheckCircle2 className="w-3.5 h-3.5" />{t("saved")}
           </span>
         )}
       </div>
 
-      <SettingsCard title="Preferencias de notificación">
-        <div className="space-y-4">
-          {rows.map(({ key, label, desc, icon: Icon }) => (
-            <div key={key} className="flex items-center gap-4">
-              <div className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
-                <Icon className="w-4 h-4 text-slate-400" />
+      {/* ── Cards grid ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        {rows.map(({ key, label, desc, icon: Icon, color }) => (
+          <div
+            key={key}
+            onClick={() => update(key, !prefs[key])}
+            className={cn(
+              "group cursor-pointer bg-white rounded-2xl border p-5 flex flex-col gap-4 transition-all hover:shadow-md select-none",
+              prefs[key] ? "border-slate-200 shadow-sm" : "border-slate-100",
+            )}
+          >
+            {/* Icon + Toggle */}
+            <div className="flex items-start justify-between">
+              <div
+                className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110"
+                style={{ backgroundColor: color + "15" }}
+              >
+                <Icon className="w-5 h-5" style={{ color }} />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-800">{label}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{desc}</p>
+              <div
+                className={cn(
+                  "relative w-10 h-5 rounded-full transition-colors shrink-0 mt-0.5",
+                  prefs[key] ? "bg-[#050040]" : "bg-slate-200",
+                )}
+                style={{ width: 40, height: 22 }}
+                onClick={(e) => { e.stopPropagation(); update(key, !prefs[key]); }}
+              >
+                <span className={cn(
+                  "absolute top-0.5 w-[18px] h-[18px] bg-white rounded-full shadow transition-transform duration-200",
+                  prefs[key] ? "translate-x-[20px]" : "translate-x-0.5",
+                )} />
               </div>
-              <Toggle enabled={prefs[key]} onChange={(v) => update(key, v)} />
             </div>
-          ))}
-        </div>
-      </SettingsCard>
+            {/* Text */}
+            <div>
+              <p className="text-sm font-semibold text-slate-800 leading-tight">{label}</p>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">{desc}</p>
+            </div>
+            {/* Status pill */}
+            <div className={cn(
+              "self-start text-[10px] font-semibold px-2.5 py-1 rounded-full transition-colors",
+              prefs[key] ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400",
+            )}>
+              {prefs[key] ? "Activo" : "Inactivo"}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1398,87 +1482,119 @@ function SettingsSecurity() {
     setCurrent(""); setNewPwd(""); setConfirm("");
   }
 
+  const { t } = useTranslation();
+
   return (
-    <div className="max-w-2xl space-y-5">
+    <div className="space-y-6">
+
+      {/* ── Header ── */}
       <div>
-        <h2 className="text-2xl font-bold text-[#050040]">Seguridad</h2>
-        <p className="text-sm text-slate-500 mt-1">Administra la seguridad de tu cuenta</p>
+        <h2 className="text-2xl font-bold text-[#050040]">{t("settings_security_title")}</h2>
+        <p className="text-sm text-slate-500 mt-1">{t("settings_security_desc")}</p>
       </div>
 
-      {/* Password change */}
-      <SettingsCard title="Cambiar contraseña" desc="Actualiza tu contraseña de acceso">
-        <form onSubmit={handleChange} className="space-y-3">
-          {[
-            { label: "Contraseña actual",     val: current,  set: setCurrent,  show: showCurrent, toggle: () => setShowCurrent((p) => !p) },
-            { label: "Nueva contraseña",      val: newPwd,   set: setNewPwd,   show: showNew,     toggle: () => setShowNew((p) => !p) },
-            { label: "Confirmar contraseña",  val: confirm,  set: setConfirm,  show: showNew,     toggle: () => setShowNew((p) => !p) },
-          ].map(({ label, val, set, show, toggle }) => (
-            <div key={label}>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">{label}</label>
-              <div className="relative">
-                <input
-                  type={show ? "text" : "password"}
-                  value={val}
-                  onChange={(e) => set(e.target.value)}
-                  className="w-full px-3 py-2.5 pr-10 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 outline-none focus:border-[#050040]/50 focus:ring-2 focus:ring-[#050040]/8 transition"
-                />
-                <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-                  {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+      {/* ── 2-column grid ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+
+        {/* Left — Change password */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6">
+          <div className="flex items-center gap-2 mb-5">
+            <div className="w-7 h-7 rounded-lg bg-[#050040]/8 flex items-center justify-center shrink-0">
+              <Shield className="w-3.5 h-3.5 text-[#050040]" />
             </div>
-          ))}
-          {msg && (
-            <p className={cn(
-              "text-xs rounded-xl px-3 py-2.5 border",
-              msg.type === "ok"
-                ? "bg-green-50 text-green-700 border-green-200"
-                : "bg-red-50 text-red-600 border-red-100",
-            )}>
-              {msg.text}
-            </p>
-          )}
-          <div className="flex justify-end pt-1">
-            <SaveBtn loading={loading} saved={msg?.type === "ok"} />
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{t("change_password")}</p>
+              <p className="text-xs text-slate-400">{t("change_password_desc")}</p>
+            </div>
           </div>
-        </form>
-      </SettingsCard>
-
-      {/* Connected accounts */}
-      <SettingsCard title="Métodos de inicio de sesión" desc="Cuentas vinculadas a tu perfil">
-        <div className="space-y-3">
-          {[
-            { label: "Google",              desc: "Inicio de sesión con Google OAuth", connected: true,  icon: "G", color: "#EA4335" },
-            { label: "Correo electrónico",  desc: "Inicio de sesión con email y OTP",  connected: true,  icon: "@", color: "#050040" },
-          ].map(({ label, desc, connected: c, icon, color }) => (
-            <div key={label} className="flex items-center gap-4 p-3.5 rounded-xl bg-slate-50 border border-slate-100">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0" style={{ backgroundColor: color }}>
-                {icon}
+          <form onSubmit={handleChange} className="space-y-3">
+            {([
+              { label: t("current_password"), val: current, set: setCurrent, show: showCurrent, toggle: () => setShowCurrent((p) => !p) },
+              { label: t("new_password"),      val: newPwd,  set: setNewPwd,  show: showNew,    toggle: () => setShowNew((p) => !p) },
+              { label: t("confirm_password"),  val: confirm, set: setConfirm, show: showNew,    toggle: () => setShowNew((p) => !p) },
+            ] as const).map(({ label, val, set, show, toggle }) => (
+              <div key={String(label)}>
+                <label className="block text-xs font-semibold text-slate-500 mb-1.5">{label}</label>
+                <div className="relative">
+                  <input
+                    type={show ? "text" : "password"}
+                    value={val}
+                    onChange={(e) => (set as React.Dispatch<React.SetStateAction<string>>)(e.target.value)}
+                    className="w-full px-3 py-2.5 pr-10 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 outline-none focus:border-[#050040]/50 focus:ring-2 focus:ring-[#050040]/8 transition"
+                  />
+                  <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+                    {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-800">{label}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{desc}</p>
-              </div>
-              {c && (
-                <span className="flex items-center gap-1 text-xs font-medium bg-green-50 text-green-700 border border-green-200 px-2 py-1 rounded-full shrink-0">
-                  <Check className="w-3 h-3" />Activo
-                </span>
-              )}
+            ))}
+            {msg && (
+              <p className={cn(
+                "text-xs rounded-xl px-3 py-2.5 border",
+                msg.type === "ok" ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-100",
+              )}>{msg.text}</p>
+            )}
+            <div className="flex justify-end pt-1">
+              <SaveBtn loading={loading} saved={msg?.type === "ok"} />
             </div>
-          ))}
+          </form>
         </div>
-      </SettingsCard>
 
-      {/* Sessions */}
-      <SettingsCard title="Sesiones activas" desc="Cierra sesión en todos los dispositivos">
-        <button
-          onClick={() => signOut({ callbackUrl: "/auth" })}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition-all"
-        >
-          <LogOut className="w-4 h-4" />
-          Cerrar sesión en todos los dispositivos
-        </button>
-      </SettingsCard>
+        {/* Right — Login methods + Sessions */}
+        <div className="space-y-4">
+
+          {/* Sign-in methods */}
+          <div className="bg-white rounded-2xl border border-slate-100 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 rounded-lg bg-[#050040]/8 flex items-center justify-center shrink-0">
+                <Link2 className="w-3.5 h-3.5 text-[#050040]" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">{t("login_methods")}</p>
+                <p className="text-xs text-slate-400">{t("login_methods_desc")}</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {[
+                { label: t("google_signin"), desc: t("google_desc"), icon: "G", color: "#EA4335" },
+                { label: t("email_signin"),  desc: t("email_desc"),  icon: "@", color: "#050040" },
+              ].map(({ label, desc, icon, color }) => (
+                <div key={String(label)} className="flex items-center gap-3 p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm" style={{ backgroundColor: color }}>
+                    {icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-800">{label}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{desc}</p>
+                  </div>
+                  <span className="flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full shrink-0">
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />{t("active_label")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Active sessions */}
+          <div className="bg-white rounded-2xl border border-slate-100 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+                <LogOut className="w-3.5 h-3.5 text-red-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">{t("active_sessions")}</p>
+                <p className="text-xs text-slate-400">{t("active_sessions_desc")}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => signOut({ callbackUrl: "/auth" })}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition-all"
+            >
+              <LogOut className="w-4 h-4" />{t("logout_all")}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1497,103 +1613,128 @@ function SettingsAccount({ user }: { user: User }) {
   }
 
   return (
-    <div className="max-w-2xl space-y-5">
-      <div className="relative bg-white rounded-2xl border border-slate-100 overflow-hidden px-6 py-5 flex items-center gap-5">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/undraw_budgeting_klon.svg" alt="" className="hidden sm:block w-24 h-auto shrink-0 object-contain" draggable={false} />
-        <div>
-          <h2 className="text-2xl font-bold text-[#050040]">{t("settings_account_title")}</h2>
-          <p className="text-sm text-slate-500 mt-0.5">{t("settings_account_desc")}</p>
-        </div>
+    <div className="space-y-6">
+
+      {/* ── Header ── */}
+      <div>
+        <h2 className="text-2xl font-bold text-[#050040]">{t("settings_account_title")}</h2>
+        <p className="text-sm text-slate-500 mt-1">{t("settings_account_desc")}</p>
       </div>
 
-      {/* Language selector */}
-      <SettingsCard title={t("language")} desc={t("language_desc")}>
-        <div className="flex items-center gap-3">
-          {(["es", "en"] as Locale[]).map((l) => (
-            <button
-              key={l}
-              onClick={() => handleLocale(l)}
-              className={cn(
-                "flex items-center gap-2.5 px-5 py-3 rounded-xl border text-sm font-semibold transition-all",
-                locale === l
-                  ? "bg-[#050040] text-white border-[#050040] shadow-sm"
-                  : "bg-slate-50 text-slate-600 border-slate-200 hover:border-[#050040]/30",
-              )}
-            >
-              <span className="text-base leading-none">{l === "es" ? "🇪🇸" : "🇺🇸"}</span>
-              {t(l === "es" ? "language_es" : "language_en")}
-              {locale === l && <Check className="w-3.5 h-3.5" />}
+      {/* ── Row 1: Plan + Language ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+
+        {/* Plan — 2/3 width */}
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 p-6">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-[#050040] flex items-center justify-center shrink-0">
+                <Zap className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">{t("current_plan")}</p>
+                <p className="text-xs text-slate-400">{t("current_plan_desc")}</p>
+              </div>
+            </div>
+            <button className="px-4 py-2 bg-[#050040] text-white rounded-xl text-xs font-semibold hover:bg-[#050040]/90 transition shadow-sm">
+              {t("upgrade")}
             </button>
-          ))}
+          </div>
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-[#050040]/5 border border-[#050040]/10 mb-4">
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-[#050040]">Plan Free</p>
+              <p className="text-xs text-slate-500 mt-0.5">{t("plan_free_desc")}</p>
+            </div>
+            <span className="text-[10px] font-bold bg-[#050040] text-white px-2.5 py-1 rounded-full uppercase tracking-wide">Free</span>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: t("plan_meetings"),     value: "3 / 5",   pct: 60  },
+              { label: t("plan_integrations"), value: "1 / 1",   pct: 100 },
+              { label: t("plan_storage"),      value: "120 MB",  pct: 24  },
+            ].map(({ label, value, pct }) => (
+              <div key={label} className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">{label}</p>
+                <p className="text-base font-bold text-slate-800 mt-1 mb-2">{value}</p>
+                <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div className={cn("h-full rounded-full transition-all", pct >= 100 ? "bg-red-400" : "bg-[#050040]")} style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Language — 1/3 width */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-[#050040]/8 flex items-center justify-center shrink-0">
+              <Globe className="w-4 h-4 text-[#050040]" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{t("language")}</p>
+              <p className="text-xs text-slate-400">{t("language_desc")}</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {(["es", "en"] as Locale[]).map((l) => (
+              <button key={l} onClick={() => handleLocale(l)}
+                className={cn(
+                  "w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-semibold transition-all",
+                  locale === l ? "bg-[#050040] text-white border-[#050040] shadow-sm" : "bg-slate-50 text-slate-600 border-slate-200 hover:border-[#050040]/30",
+                )}
+              >
+                <span className="text-lg leading-none">{l === "es" ? "🇪🇸" : "🇺🇸"}</span>
+                <span className="flex-1 text-left">{t(l === "es" ? "language_es" : "language_en")}</span>
+                {locale === l && <Check className="w-4 h-4 shrink-0" />}
+              </button>
+            ))}
+          </div>
           {langSaved && (
-            <span className="flex items-center gap-1 text-xs font-medium bg-green-50 text-green-700 border border-green-200 px-3 py-1.5 rounded-xl ml-auto">
+            <span className="flex items-center gap-1.5 text-xs font-semibold bg-green-50 text-green-700 border border-green-200 px-3 py-2 rounded-xl justify-center">
               <CheckCircle2 className="w-3.5 h-3.5" />{t("language_saved")}
             </span>
           )}
         </div>
-      </SettingsCard>
+      </div>
 
-      {/* Plan */}
-      <SettingsCard title={t("current_plan")} desc={t("current_plan_desc")}>
-        <div className="flex items-center gap-4 p-4 rounded-xl bg-[#050040]/4 border border-[#050040]/10">
-          <div className="w-10 h-10 rounded-xl bg-[#050040] flex items-center justify-center shrink-0">
-            <Zap className="w-5 h-5 text-white" />
+      {/* ── Row 2: Data + Danger zone ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Export data */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+              <FileText className="w-4 h-4 text-slate-500" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{t("your_data")}</p>
+              <p className="text-xs text-slate-400">{t("your_data_desc")}</p>
+            </div>
           </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-[#050040]">Plan Free</p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {locale === "en"
-                ? "Up to 5 meetings/month · 1 integration · Basic transcription"
-                : "Hasta 5 reuniones/mes · 1 integración · Transcripción básica"}
-            </p>
+          <button className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:border-[#050040]/30 hover:text-[#050040] transition-all">
+            <FileText className="w-4 h-4" />{t("export_data")}
+          </button>
+          <p className="text-xs text-slate-400 mt-2 text-center">{t("export_desc")}</p>
+        </div>
+
+        {/* Danger zone */}
+        <div className="bg-white rounded-2xl border border-red-100 p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-red-700">{t("danger_zone")}</p>
+              <p className="text-xs text-slate-400">{t("danger_zone_desc")}</p>
+            </div>
           </div>
-          <button className="shrink-0 px-4 py-2 bg-[#050040] text-white rounded-xl text-xs font-semibold hover:bg-[#050040]/90 transition">
-            {t("upgrade")}
+          <button
+            onClick={() => setShowDialog(true)}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm font-semibold text-red-600 hover:bg-red-100 transition-all"
+          >
+            <Trash2 className="w-4 h-4" />{t("delete_account")}
           </button>
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-3">
-          {[
-            { label: locale === "en" ? "Meetings"      : "Reuniones",     value: "3 / 5",   pct: 60  },
-            { label: locale === "en" ? "Integrations"  : "Integraciones", value: "1 / 1",   pct: 100 },
-            { label: locale === "en" ? "Storage"       : "Almacenamiento",value: "120 MB",  pct: 24  },
-          ].map(({ label, value, pct }) => (
-            <div key={label} className="bg-white rounded-xl border border-slate-100 p-3">
-              <p className="text-xs text-slate-500 mb-1">{label}</p>
-              <p className="text-sm font-semibold text-slate-800 mb-2">{value}</p>
-              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div className={cn("h-full rounded-full", pct >= 100 ? "bg-red-400" : "bg-[#050040]")} style={{ width: `${pct}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </SettingsCard>
-
-      {/* Export data */}
-      <SettingsCard title={t("your_data")} desc={t("your_data_desc")}>
-        <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:border-[#050040]/30 hover:text-[#050040] transition-all">
-          <FileText className="w-4 h-4" />
-          {t("export_data")}
-        </button>
-        <p className="text-xs text-slate-400 mt-2">{t("export_desc")}</p>
-      </SettingsCard>
-
-      {/* Danger zone */}
-      <div className="bg-white rounded-2xl border border-red-100 p-5 sm:p-6">
-        <div className="flex items-start gap-3 mb-4">
-          <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-          <div>
-            <h3 className="text-sm font-semibold text-red-700">{t("danger_zone")}</h3>
-            <p className="text-xs text-slate-400 mt-0.5">{t("danger_zone_desc")}</p>
-          </div>
-        </div>
-        <button
-          onClick={() => setShowDialog(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-50 border border-red-200 text-sm font-semibold text-red-600 hover:bg-red-100 transition-all"
-        >
-          <Trash2 className="w-4 h-4" />
-          {t("delete_account")}
-        </button>
       </div>
 
       {/* Delete dialog */}
@@ -1620,23 +1761,18 @@ function SettingsAccount({ user }: { user: User }) {
               {locale === "en" ? "to confirm." : "para confirmar."}
             </p>
             <input
-              type="text"
-              value={confirmDelete}
+              type="text" value={confirmDelete}
               onChange={(e) => setConfirmDelete(e.target.value)}
               placeholder={user.email}
               className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm outline-none focus:border-red-300 transition mb-4"
             />
             <div className="flex gap-2">
-              <button
-                onClick={() => setShowDialog(false)}
-                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition"
-              >
+              <button onClick={() => setShowDialog(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
                 {t("cancel")}
               </button>
-              <button
-                disabled={confirmDelete !== user.email}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold disabled:opacity-40 hover:bg-red-600 transition"
-              >
+              <button disabled={confirmDelete !== user.email}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold disabled:opacity-40 hover:bg-red-600 transition">
                 {t("delete")}
               </button>
             </div>
