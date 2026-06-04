@@ -22,6 +22,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { AIChatInput, type AIChatInputMode } from "@/components/ui/ai-chat-input";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
+import { useTranslation } from "@/lib/i18n";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Conversation { id: string; title: string; created_at: string; updated_at: string; }
@@ -30,17 +31,17 @@ interface ChatMessage { id: string; role: Role; content: string; mode?: string |
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 /** Format an ISO timestamp as a human-readable relative string for the sidebar. */
-function fmtRelative(iso: string): string {
+function fmtRelative(iso: string, locale: "es" | "en" = "es"): string {
   const d = new Date(iso);
   const diff = Date.now() - d.getTime();
   const min = Math.floor(diff / 60000);
-  if (min < 1)   return "Ahora";
-  if (min < 60)  return `Hace ${min} min`;
+  if (min < 1)   return locale === "en" ? "Now"        : "Ahora";
+  if (min < 60)  return locale === "en" ? `${min}m ago`    : `Hace ${min} min`;
   const hr = Math.floor(min / 60);
-  if (hr  < 24)  return `Hace ${hr} h`;
+  if (hr  < 24)  return locale === "en" ? `${hr}h ago`     : `Hace ${hr} h`;
   const days = Math.floor(hr / 24);
-  if (days < 7)  return `Hace ${days} d`;
-  return d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+  if (days < 7)  return locale === "en" ? `${days}d ago`   : `Hace ${days} d`;
+  return d.toLocaleDateString(locale === "en" ? "en-US" : "es-ES", { day: "numeric", month: "short" });
 }
 function initials(name: string): string {
   return name.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase();
@@ -53,6 +54,7 @@ function ConversationItem({
   conv: Conversation; active: boolean;
   onSelect: () => void; onDelete: () => void;
 }) {
+  const { t, locale } = useTranslation();
   const [confirming, setConfirming] = React.useState(false);
 
   return (
@@ -71,7 +73,7 @@ function ConversationItem({
             "text-sm font-medium leading-tight truncate",
             active ? "text-[#050040]" : "text-slate-700",
           )}>{conv.title}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">{fmtRelative(conv.updated_at)}</p>
+          <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">{fmtRelative(conv.updated_at, locale)}</p>
         </div>
       </button>
 
@@ -80,7 +82,7 @@ function ConversationItem({
         <div className="absolute right-1.5 top-1.5 flex gap-1">
           <button onClick={onDelete}
             className="px-2 py-1 rounded-lg bg-red-500 text-white text-[10px] font-semibold hover:bg-red-600 transition">
-            Eliminar
+            {t("delete")}
           </button>
           <button onClick={() => setConfirming(false)}
             className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-[10px] font-medium text-slate-500 hover:bg-slate-50 transition">
@@ -203,19 +205,19 @@ function AssistantMessage({
 // ── ThinkingIndicator (rotating status with shimmer) ─────────────────────────
 // Cycles through different status labels so the user knows the mode that's active
 // and gets visual feedback that the server is working.
-const THINKING_STATES: Record<"normal" | "think" | "deep", string[]> = {
-  normal: ["Pensando", "Analizando", "Procesando"],
-  think:  ["Pensando profundamente", "Razonando", "Conectando ideas"],
-  deep:   ["Buscando", "Analizando fuentes", "Sintetizando"],
-};
-
 function ThinkingIndicator({ mode = "normal" }: { mode?: "normal" | "think" | "deep" }) {
-  const states = THINKING_STATES[mode];
+  const { t } = useTranslation();
+  const statesMap: Record<"normal" | "think" | "deep", string[]> = {
+    normal: [t("meety_thinking"),       t("meety_analyzing"),        t("meety_processing")],
+    think:  [t("meety_thinking_deep1"), t("meety_thinking_deep2"),   t("meety_thinking_deep3")],
+    deep:   [t("meety_search1"),        t("meety_search2"),          t("meety_search3")],
+  };
+  const states = statesMap[mode];
   const [idx, setIdx] = React.useState(0);
 
   React.useEffect(() => {
-    const t = setInterval(() => setIdx((i) => (i + 1) % states.length), 1100);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setIdx((i) => (i + 1) % states.length), 1100);
+    return () => clearInterval(timer);
   }, [states.length]);
 
   return (
@@ -259,6 +261,7 @@ function ThinkingIndicator({ mode = "normal" }: { mode?: "normal" | "think" | "d
 
 // ── MeetyView ─────────────────────────────────────────────────────────────────
 export default function MeetyView({ userName, userImage }: { userName: string; userImage: string | null }) {
+  const { t } = useTranslation();
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
   const [activeId,      setActiveId]      = React.useState<string | null>(null);
   const [messages,      setMessages]      = React.useState<ChatMessage[]>([]);
@@ -428,7 +431,7 @@ export default function MeetyView({ userName, userImage }: { userName: string; u
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-slate-800 leading-tight">Meety</p>
-                  <p className="text-[10px] text-slate-400 leading-tight">Tu asistente IA</p>
+                  <p className="text-[10px] text-slate-400 leading-tight">{t("meety_subtitle")}</p>
                 </div>
               </div>
               <button onClick={() => setSidebarOpen(false)}
@@ -440,7 +443,7 @@ export default function MeetyView({ userName, userImage }: { userName: string; u
             <div className="px-3 py-3 border-b border-slate-100 shrink-0">
               <button onClick={handleNewChat}
                 className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#0c0c63] transition-all hover:shadow-md">
-                <Plus className="w-4 h-4" />Nueva conversación
+                <Plus className="w-4 h-4" />{t("meety_new_chat")}
               </button>
             </div>
 
@@ -452,7 +455,7 @@ export default function MeetyView({ userName, userImage }: { userName: string; u
               ) : conversations.length === 0 ? (
                 <div className="px-3 py-6 text-center">
                   <MessageCircle className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                  <p className="text-xs text-slate-400">Aún no hay conversaciones</p>
+                  <p className="text-xs text-slate-400">{t("meety_no_convs")}</p>
                 </div>
               ) : (
                 conversations.map((c) => (
@@ -488,7 +491,7 @@ export default function MeetyView({ userName, userImage }: { userName: string; u
             <h2 className="text-base font-semibold text-slate-800 flex-1 truncate">{activeConv.title}</h2>
             <button onClick={() => deleteConversation(activeConv.id)}
               className="p-2 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
-              title="Eliminar conversación">
+              title={t("meety_delete")}>
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
@@ -532,11 +535,12 @@ export default function MeetyView({ userName, userImage }: { userName: string; u
 
 // ── WelcomeState ──────────────────────────────────────────────────────────────
 function WelcomeState({ userName, onSampleClick }: { userName: string; onSampleClick: (t: string) => void }) {
+  const { t } = useTranslation();
   const samples = [
-    { icon: Sparkles,  text: "¿Qué tengo hoy?",                  hint: "Reuniones del día" },
-    { icon: Pencil,    text: "Crea una reunión para mañana 10am", hint: "Crear evento" },
-    { icon: Lightbulb, text: "Resúmeme las notas de la semana",  hint: "MeetBook" },
-    { icon: Globe,     text: "Busca una grabación reciente",     hint: "Reuniones" },
+    { icon: Sparkles,  text: t("meety_sample1_text"), hint: t("meety_sample1_hint") },
+    { icon: Pencil,    text: t("meety_sample2_text"), hint: t("meety_sample2_hint") },
+    { icon: Lightbulb, text: t("meety_sample3_text"), hint: t("meety_sample3_hint") },
+    { icon: Globe,     text: t("meety_sample4_text"), hint: t("meety_sample4_hint") },
   ];
 
   return (
@@ -552,9 +556,11 @@ function WelcomeState({ userName, onSampleClick }: { userName: string; onSampleC
         <img src="/undraw_ai-research-assistant_cxx0.svg" alt="" className="w-14 h-14 object-contain" />
       </div>
       <h1 className="text-3xl sm:text-4xl font-bold text-slate-800 leading-tight">
-        ¡Hola, {userName}!
+        {t("meety_welcome_hello")} {userName}!
       </h1>
-      <p className="text-base text-slate-500 mt-2">Soy <span className="font-semibold text-[#050040]">Meety</span>, tu asistente IA. ¿En qué te ayudo hoy?</p>
+      <p className="text-base text-slate-500 mt-2">
+        {t("meety_welcome_sub")}
+      </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-8 text-left">
         {samples.map(({ icon: Icon, text, hint }) => (

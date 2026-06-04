@@ -13,7 +13,7 @@ import {
   Monitor, Copy, RefreshCw, Download,
 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
-import { useTranslation, type Locale } from "@/lib/i18n";
+import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
 import { SiSlack, SiGooglecalendar, SiJira, SiNotion } from "react-icons/si";
 import { TbBrandTeams, TbBrandZoom } from "react-icons/tb";
 import { signOut } from "next-auth/react";
@@ -35,37 +35,41 @@ interface Profile {
 interface DashboardShellProps { user: User; profile: Profile }
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
-const NAV_ITEMS = [
-  { id: "home",     label: "Inicio",      icon: LayoutDashboard, children: null },
-  { id: "meetings", label: "Reuniones",   icon: Video,           children: null },
-  { id: "rooms", label: "Salas", icon: DoorOpen, children: null },
-  { id: "meetcalendar", label: "MeetCalendar", icon: Calendar,  children: null },
-  { id: "meetbook",     label: "MeetBook",     icon: BookOpen,  children: null },
-  { id: "integrations", label: "Integraciones", icon: Puzzle,  children: null },
-  {
-    id: "settings", label: "Configuración", icon: Settings, children: [
-      { id: "settings-profile",       label: "Perfil",          icon: User    },
-      { id: "settings-notifications", label: "Notificaciones",  icon: Bell    },
-      { id: "settings-security",      label: "Seguridad",       icon: Shield  },
-      { id: "settings-account",       label: "Cuenta",          icon: CreditCard },
-    ],
-  },
-];
+function getNavItems(t: (k: TranslationKey) => string) {
+  return [
+    { id: "home",     label: t("nav_home"),         icon: LayoutDashboard, children: null },
+    { id: "meetings", label: t("nav_meetings"),      icon: Video,           children: null },
+    { id: "rooms",    label: t("nav_rooms"),         icon: DoorOpen,        children: null },
+    { id: "meetcalendar", label: t("nav_meetcalendar"), icon: Calendar,     children: null },
+    { id: "meetbook",     label: t("nav_meetbook"),     icon: BookOpen,     children: null },
+    { id: "integrations", label: t("nav_integrations"), icon: Puzzle,       children: null },
+    {
+      id: "settings", label: t("nav_settings"), icon: Settings, children: [
+        { id: "settings-profile",       label: t("nav_profile"),       icon: User    },
+        { id: "settings-notifications", label: t("nav_notifications"), icon: Bell    },
+        { id: "settings-security",      label: t("nav_security"),      icon: Shield  },
+        { id: "settings-account",       label: t("nav_account"),       icon: CreditCard },
+      ],
+    },
+  ];
+}
 
-const SECTION_TITLES: Record<string, string> = {
-  home:                    "Inicio",
-  meetings:                "Reuniones",
-  rooms:                   "Salas",
-  "rooms-meetings":        "Salas · Reuniones",
-  meetcalendar:            "MeetCalendar",
-  meety:                   "Meety · Asistente IA",
-  meetbook:                "MeetBook",
-  integrations:            "Integraciones",
-  "settings-profile":      "Configuración · Perfil",
-  "settings-notifications":"Configuración · Notificaciones",
-  "settings-security":     "Configuración · Seguridad",
-  "settings-account":      "Configuración · Cuenta",
-};
+function getSectionTitles(t: (k: TranslationKey) => string): Record<string, string> {
+  return {
+    home:                     t("section_home"),
+    meetings:                 t("section_meetings"),
+    rooms:                    t("section_rooms"),
+    "rooms-meetings":         t("section_rooms_meetings"),
+    meetcalendar:             t("section_meetcalendar"),
+    meety:                    t("section_meety"),
+    meetbook:                 t("section_meetbook"),
+    integrations:             t("section_integrations"),
+    "settings-profile":       t("section_settings_profile"),
+    "settings-notifications": t("section_settings_notifications"),
+    "settings-security":      t("section_settings_security"),
+    "settings-account":       t("section_settings_account"),
+  };
+}
 
 // ── Integration catalogue ─────────────────────────────────────────────────────
 const INTEGRATION_LIST = [
@@ -156,6 +160,7 @@ function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean
 }
 
 function SaveBtn({ loading, saved }: { loading: boolean; saved: boolean }) {
+  const { t } = useTranslation();
   return (
     <button
       type="submit"
@@ -167,13 +172,14 @@ function SaveBtn({ loading, saved }: { loading: boolean; saved: boolean }) {
           : "bg-[#050040] text-white hover:bg-[#050040]/90 disabled:opacity-60",
       )}
     >
-      {saved ? <><CheckCircle2 className="w-4 h-4" />Guardado</> : loading ? "Guardando…" : <><Save className="w-4 h-4" />Guardar cambios</>}
+      {saved ? <><CheckCircle2 className="w-4 h-4" />{t("saved")}</> : loading ? t("saving") : <><Save className="w-4 h-4" />{t("save_changes")}</>}
     </button>
   );
 }
 
 // ── Meety chat button (lives in the sidebar) ─────────────────────────────────
 function MeetyButton({ active, onClick }: { active: boolean; onClick: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="relative">
       {/* Outer glow aura */}
@@ -215,18 +221,18 @@ function MeetyButton({ active, onClick }: { active: boolean; onClick: () => void
           {/* Text */}
           <div className="space-y-1">
             <div className="flex items-center justify-center gap-1.5">
-              <p className="text-base font-bold text-white leading-tight">Chatea con Meety</p>
+              <p className="text-base font-bold text-white leading-tight">{t("meety_chat")}</p>
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
             </div>
             <p className="text-xs text-white/65 leading-snug">
-              Tu asistente IA — siempre listo
+              {t("meety_subtitle")}
             </p>
           </div>
 
           {/* CTA chip */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 group-hover:bg-white/25 transition-colors duration-300 border border-white/10">
             <MessageCircle className="w-3.5 h-3.5 text-white/80" />
-            <span className="text-[11px] font-semibold text-white/90">Iniciar conversación</span>
+            <span className="text-[11px] font-semibold text-white/90">{t("meety_cta")}</span>
           </div>
         </div>
       </button>
@@ -242,6 +248,8 @@ function SidebarContent({
   activeNav: string; setActiveNav: (id: string) => void;
   onClose?: () => void; onMeetyOpen: () => void;
 }) {
+  const { t } = useTranslation();
+  const navItems = getNavItems(t);
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Logo */}
@@ -269,7 +277,7 @@ function SidebarContent({
 
       {/* Nav */}
       <nav className="flex-1 px-4 py-5 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.map(({ id, label, icon: Icon, children }) => {
+        {navItems.map(({ id, label, icon: Icon, children }) => {
           const active     = activeNav === id || activeNav.startsWith(id + "-");
           const isExpanded = active && !!children;
           const isRooms    = id === "rooms";
@@ -418,6 +426,7 @@ function ThemeToggleBtn() {
 function Header({ activeNav, user, onMenuClick, setActiveNav }: {
   activeNav: string; user: User; onMenuClick: () => void; setActiveNav: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const [search, setSearch] = React.useState("");
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -431,17 +440,17 @@ function Header({ activeNav, user, onMenuClick, setActiveNav }: {
         "text-base font-semibold text-slate-800 min-w-0 truncate",
         searchOpen ? "hidden md:block" : "block",
       )}>
-        {SECTION_TITLES[activeNav] ?? "Dashboard"}
+        {getSectionTitles(t)[activeNav] ?? "Dashboard"}
       </h1>
       <div className="hidden md:flex flex-1 max-w-sm relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-        <input type="text" placeholder="Buscar reuniones..." value={search} onChange={(e) => setSearch(e.target.value)}
+        <input type="text" placeholder={t("search_placeholder")} value={search} onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm placeholder:text-slate-400 outline-none focus:border-[#050040]/40 focus:ring-2 focus:ring-[#050040]/8 transition" />
       </div>
       {searchOpen && (
         <div className="md:hidden flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-          <input autoFocus type="text" placeholder="Buscar..." value={search} onChange={(e) => setSearch(e.target.value)}
+          <input autoFocus type="text" placeholder={t("search_placeholder")} value={search} onChange={(e) => setSearch(e.target.value)}
             onBlur={() => { if (!search) setSearchOpen(false); }}
             className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm outline-none focus:border-[#050040]/40 transition" />
         </div>
@@ -557,6 +566,7 @@ const HOME_GATEWAYS = [
 ];
 
 function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) => void }) {
+  const { t, locale } = useTranslation();
   const [meetings, setMeetings] = React.useState<HomeMeeting[]>([]);
   const [loading,  setLoading]  = React.useState(true);
 
@@ -568,8 +578,26 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
       .finally(() => setLoading(false));
   }, []);
 
+  function relativeUntilLocal(iso: string): string {
+    const diff = new Date(iso).getTime() - Date.now();
+    const mins = Math.round(diff / 60000);
+    if (mins <= 0) return t("home_relative_now");
+    if (mins < 60) return `en ${mins} min`;
+    const hrs = Math.floor(mins / 60);
+    const rem = mins % 60;
+    if (hrs < 24) return rem > 0 ? `en ${hrs} h ${rem} min` : `en ${hrs} h`;
+    return locale === "en" ? "later today" : "más tarde hoy";
+  }
+
+  const homeGateways = [
+    { id: "meetcalendar", label: t("nav_meetcalendar"), desc: t("home_cal_desc"),   icon: Calendar, color: "#050040" },
+    { id: "rooms",        label: t("nav_rooms"),        desc: t("home_rooms_desc"), icon: DoorOpen, color: "#059669" },
+    { id: "meetbook",     label: t("nav_meetbook"),     desc: t("home_book_desc"),  icon: BookOpen, color: "#7c3aed" },
+    { id: "meetings",     label: t("nav_meetings"),     desc: t("home_meet_desc"),  icon: Video,    color: "#d97706" },
+  ];
+
   const hour      = new Date().getHours();
-  const greeting  = hour < 12 ? "Buenos días" : hour < 19 ? "Buenas tardes" : "Buenas noches";
+  const greeting  = hour < 12 ? t("greeting_morning") : hour < 19 ? t("greeting_afternoon") : t("greeting_evening");
   const firstName = user.name.split(" ")[0];
   const dateStr   = new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
 
@@ -580,12 +608,12 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
   const next     = upcoming[0] ?? null;
 
   const contextual = loading
-    ? "Preparando tu día…"
+    ? t("home_context_preparing")
     : next
-      ? <>Tu próxima reunión es <span className="text-white font-semibold">{relativeUntil(next.start_at)}</span>.</>
+      ? <>{t("home_next_in")} <span className="text-white font-semibold">{relativeUntilLocal(next.start_at)}</span>.</>
       : meetings.length > 0
-        ? "Ya pasaron tus reuniones de hoy. Buen trabajo. 👏"
-        : "No tienes reuniones hoy. Un buen momento para ordenar tus ideas.";
+        ? t("home_done_today")
+        : t("home_no_meetings");
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -615,7 +643,7 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
           <div className="px-6 pt-5 pb-2 flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-[#050040]" />
-            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wide">Lo que sigue</h2>
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wide">{t("home_next_meeting")}</h2>
           </div>
           <div className="px-6 pb-6 flex items-center gap-5">
             <div className="text-center shrink-0 w-20">
@@ -626,7 +654,7 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
             <div className="flex-1 min-w-0">
               <span className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full mb-1.5"
                 style={{ backgroundColor: next.color + "18", color: next.color }}>
-                {relativeUntil(next.start_at)}
+                {relativeUntilLocal(next.start_at)}
               </span>
               <h3 className="text-lg font-semibold text-slate-800 truncate">{next.title}</h3>
               <div className="flex items-center gap-3 mt-1.5 flex-wrap">
@@ -647,7 +675,7 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
             </div>
             <button onClick={() => onNavigate("meetcalendar")}
               className="shrink-0 flex items-center gap-1.5 px-5 py-3 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 transition-colors">
-              <span className="hidden sm:inline">Ver</span><ArrowRight className="w-4 h-4" />
+              <span className="hidden sm:inline">{t("home_view")}</span><ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -656,21 +684,21 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/undraw_writing-online_x665.svg" alt="" className="hidden sm:block w-28 h-auto shrink-0" draggable={false} />
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-slate-800">Tu día está despejado</h3>
-            <p className="text-sm text-slate-400 mt-1">Captura ideas en MeetBook o planifica algo en tu calendario.</p>
+            <h3 className="text-lg font-semibold text-slate-800">{t("home_clear_day")}</h3>
+            <p className="text-sm text-slate-400 mt-1">{t("home_clear_desc")}</p>
           </div>
           <button onClick={() => onNavigate("meetbook")}
             className="shrink-0 flex items-center gap-1.5 px-5 py-3 rounded-xl bg-[#050040]/8 text-[#050040] text-sm font-semibold hover:bg-[#050040]/12 transition-colors">
-            Abrir MeetBook<ArrowRight className="w-4 h-4" />
+            {t("home_open_meetbook")}<ArrowRight className="w-4 h-4" />
           </button>
         </div>
       )}
 
       {/* ── Gateways ── */}
       <div>
-        <h2 className="text-base font-bold text-slate-700 mb-4 px-1">¿Por dónde empezamos, {firstName}?</h2>
+        <h2 className="text-base font-bold text-slate-700 mb-4 px-1">{t("home_gateways")} {firstName}?</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {HOME_GATEWAYS.map(({ id, label, desc, icon: Icon, color }) => (
+          {homeGateways.map(({ id, label, desc, icon: Icon, color }) => (
             <button key={id} onClick={() => onNavigate(id)}
               className="group relative text-left bg-white rounded-2xl border border-slate-100 p-6 flex items-center gap-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
               <div className="absolute inset-y-0 left-0 w-1.5 transition-all group-hover:w-2" style={{ backgroundColor: color }} />
@@ -690,7 +718,7 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
 
       {/* ── Closing line ── */}
       <p className="text-center text-xs text-slate-300 pt-2 pb-1">
-        Hecho para que tus reuniones fluyan · <span className="font-semibold text-slate-400">MeetBox</span>
+        {t("home_footer")} · <span className="font-semibold text-slate-400">MeetBox</span>
       </p>
     </div>
   );
@@ -858,6 +886,7 @@ function CalendarView() {
 
 // ── Desktop connection card ────────────────────────────────────────────────────
 function DesktopTokenCard() {
+  const { t } = useTranslation();
   const [token,        setToken]        = React.useState<string | null>(null);
   const [loading,      setLoading]      = React.useState(true);
   const [regenerating, setRegenerating] = React.useState(false);
@@ -894,12 +923,12 @@ function DesktopTokenCard() {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-slate-800">MeetBox Desktop</h3>
+            <h3 className="text-sm font-semibold text-slate-800">{t("desktop_integration")}</h3>
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#050040]/8 text-[#050040]">
-              App nativa
+              {t("desktop_native_app")}
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">Graba el audio de tus videollamadas sin bots · Funciona con Zoom, Meet y Teams</p>
+          <p className="text-xs text-slate-400 mt-0.5">{t("desktop_desc")}</p>
         </div>
         <a
           href="https://meetbox.io/desktop"
@@ -908,7 +937,7 @@ function DesktopTokenCard() {
           className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
         >
           <Download className="w-3.5 h-3.5" />
-          Descargar
+          {t("desktop_download")}
         </a>
       </div>
 
@@ -917,9 +946,9 @@ function DesktopTokenCard() {
         {/* Instrucciones */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
-            { n: "1", text: "Descarga e instala MeetBox Desktop en tu equipo" },
-            { n: "2", text: 'Abre la app y pulsa "Conectar cuenta"' },
-            { n: "3", text: "Copia el código de abajo y pégalo en la app" },
+            { n: "1", text: t("desktop_step1") },
+            { n: "2", text: t("desktop_step2") },
+            { n: "3", text: t("desktop_step3") },
           ].map(({ n, text }) => (
             <div key={n} className="flex items-start gap-3 bg-slate-50 rounded-xl px-4 py-3">
               <span className="w-6 h-6 rounded-full bg-[#050040]/10 text-[#050040] text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
@@ -932,7 +961,7 @@ function DesktopTokenCard() {
 
         {/* Token */}
         <div>
-          <p className="text-xs font-semibold text-slate-600 mb-2">Tu código de conexión</p>
+          <p className="text-xs font-semibold text-slate-600 mb-2">{t("desktop_token_label")}</p>
           {loading ? (
             <div className="h-14 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center">
               <RefreshCw className="w-4 h-4 text-slate-300 animate-spin" />
@@ -960,8 +989,8 @@ function DesktopTokenCard() {
                 )}
               >
                 {copied
-                  ? <><Check className="w-4 h-4" />Copiado</>
-                  : <><Copy className="w-4 h-4" />Copiar</>
+                  ? <><Check className="w-4 h-4" />{t("desktop_copied")}</>
+                  : <><Copy className="w-4 h-4" />{t("desktop_copy")}</>
                 }
               </button>
 
@@ -977,7 +1006,7 @@ function DesktopTokenCard() {
             </div>
           )}
           <p className="text-[11px] text-slate-400 mt-2">
-            El código es único para tu cuenta. Regenerarlo desconectará cualquier dispositivo vinculado anteriormente.
+            {t("desktop_regen_desc")}
           </p>
         </div>
       </div>
@@ -987,6 +1016,7 @@ function DesktopTokenCard() {
 
 // ── Integrations view ─────────────────────────────────────────────────────────
 function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (p: Partial<Profile>) => void }) {
+  const { t } = useTranslation();
   const [connected, setConnected] = React.useState<string[]>(profile.integrations);
   const [saving, setSaving] = React.useState<string | null>(null);
   const [customInput, setCustomInput] = React.useState("");
@@ -1041,9 +1071,9 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/undraw_programming_j1zw.svg" alt="" className="hidden sm:block w-28 h-auto shrink-0 object-contain" draggable={false} />
         <div>
-          <h2 className="text-2xl font-bold text-[#050040]">Integraciones</h2>
+          <h2 className="text-2xl font-bold text-[#050040]">{t("integrations_title")}</h2>
           <p className="text-sm text-slate-500 mt-0.5">
-            Conecta tus herramientas con MeetBox · <span className="font-medium text-slate-700">{connectedCount} conectada{connectedCount !== 1 ? "s" : ""}</span>
+            {t("integrations_desc")} · <span className="font-medium text-slate-700">{connectedCount} {t("connected").toLowerCase()}</span>
           </p>
         </div>
       </div>
@@ -1068,7 +1098,7 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
                   <p className="text-sm font-semibold text-slate-800">{label}</p>
                   {isConnected && (
                     <span className="inline-flex items-center gap-1 text-xs font-medium bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">
-                      <Check className="w-3 h-3" />Conectado
+                      <Check className="w-3 h-3" />{t("connected")}
                     </span>
                   )}
                 </div>
@@ -1084,7 +1114,7 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
                     : "bg-[#050040] text-white hover:bg-[#050040]/90",
                 )}
               >
-                {isLoading ? "…" : isConnected ? <><Zap className="w-3.5 h-3.5" />Desconectar</> : <><Link2 className="w-3.5 h-3.5" />Conectar</>}
+                {isLoading ? "…" : isConnected ? <><Zap className="w-3.5 h-3.5" />{t("disconnect")}</> : <><Link2 className="w-3.5 h-3.5" />{t("connect")}</>}
               </button>
             </div>
           );
@@ -1093,15 +1123,15 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
 
       {/* Custom integrations */}
       <div className="bg-white rounded-2xl border border-slate-100 p-5">
-        <h3 className="text-sm font-semibold text-slate-800 mb-1">Otras herramientas</h3>
-        <p className="text-xs text-slate-400 mb-4">Añade integraciones personalizadas que usa tu equipo</p>
+        <h3 className="text-sm font-semibold text-slate-800 mb-1">{t("other_tools")}</h3>
+        <p className="text-xs text-slate-400 mb-4">{t("other_tools_desc")}</p>
         <div className="flex gap-2 mb-3">
           <input
             type="text"
             value={customInput}
             onChange={(e) => setCustomInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
-            placeholder="Nombre de la herramienta…"
+            placeholder={t("tool_placeholder")}
             className="flex-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm placeholder:text-slate-400 outline-none focus:border-[#050040]/40 transition"
           />
           <button onClick={addCustom} className="px-3 py-2 bg-[#050040] text-white rounded-xl text-sm font-semibold hover:bg-[#050040]/90 transition">
@@ -1127,12 +1157,25 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
 
 // ── Settings: Perfil ──────────────────────────────────────────────────────────
 function SettingsProfile({ user, profile, onUpdate }: { user: User; profile: Profile; onUpdate: (p: Partial<Profile>) => void }) {
+  const { t } = useTranslation();
   const [orgName,      setOrgName]      = React.useState(profile.orgName ?? "");
   const [teamSize,     setTeamSize]     = React.useState(profile.teamSize ?? "");
   const [meetingTypes, setMeetingTypes] = React.useState<string[]>(profile.meetingTypes);
   const [loading, setLoading] = React.useState(false);
   const [saved,   setSaved]   = React.useState(false);
   const [error,   setError]   = React.useState("");
+
+  const teamSizes = [
+    { id: "solo",  label: t("team_solo") },
+    { id: "2-10",  label: t("team_2_10") },
+    { id: "11-50", label: t("team_11_50") },
+    { id: "50+",   label: t("team_50p") },
+  ];
+  const meetingTypeOpts = [
+    { id: "presencial", label: t("meeting_presencial") },
+    { id: "virtual",    label: t("meeting_virtual") },
+    { id: "hibrida",    label: t("meeting_hibrida") },
+  ];
 
   function toggleMeeting(id: string) {
     setMeetingTypes((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
@@ -1161,12 +1204,12 @@ function SettingsProfile({ user, profile, onUpdate }: { user: User; profile: Pro
   return (
     <form onSubmit={handleSubmit} className="max-w-2xl space-y-5">
       <div>
-        <h2 className="text-2xl font-bold text-[#050040]">Perfil</h2>
-        <p className="text-sm text-slate-500 mt-1">Gestiona tu información personal y la de tu organización</p>
+        <h2 className="text-2xl font-bold text-[#050040]">{t("settings_profile_title")}</h2>
+        <p className="text-sm text-slate-500 mt-1">{t("settings_profile_desc")}</p>
       </div>
 
       {/* Personal info */}
-      <SettingsCard title="Información personal" desc="Datos de tu cuenta de MeetBox">
+      <SettingsCard title={t("personal_info")} desc={t("personal_info_desc")}>
         <div className="flex items-center gap-4 mb-5 pb-5 border-b border-slate-100">
           <Avatar name={user.name} image={user.image} />
           <div>
@@ -1177,7 +1220,7 @@ function SettingsProfile({ user, profile, onUpdate }: { user: User; profile: Pro
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              <User className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />Nombre completo
+              <User className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />{t("full_name")}
             </label>
             <input
               type="text"
@@ -1185,11 +1228,11 @@ function SettingsProfile({ user, profile, onUpdate }: { user: User; profile: Pro
               readOnly
               className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-500 cursor-not-allowed"
             />
-            <p className="text-xs text-slate-400 mt-1">El nombre se gestiona desde tu proveedor de inicio de sesión</p>
+            <p className="text-xs text-slate-400 mt-1">{t("name_managed_by_provider")}</p>
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              <Mail className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />Correo electrónico
+              <Mail className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />{t("email")}
             </label>
             <input
               type="email"
@@ -1202,26 +1245,26 @@ function SettingsProfile({ user, profile, onUpdate }: { user: User; profile: Pro
       </SettingsCard>
 
       {/* Organisation */}
-      <SettingsCard title="Organización" desc="Configura el espacio de trabajo de tu equipo">
+      <SettingsCard title={t("organization")} desc={t("organization_desc")}>
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              <Building2 className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />Nombre de la organización
+              <Building2 className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />{t("org_name")}
             </label>
             <input
               type="text"
               value={orgName}
               onChange={(e) => setOrgName(e.target.value)}
-              placeholder="Ej. Acme Corp"
+              placeholder={t("org_name_placeholder")}
               className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-[#050040]/50 focus:ring-2 focus:ring-[#050040]/8 transition"
             />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-2">
-              <Users className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />Tamaño del equipo
+              <Users className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />{t("team_size")}
             </label>
             <div className="flex flex-wrap gap-2">
-              {TEAM_SIZES.map(({ id, label }) => (
+              {teamSizes.map(({ id, label }) => (
                 <button
                   key={id}
                   type="button"
@@ -1242,9 +1285,9 @@ function SettingsProfile({ user, profile, onUpdate }: { user: User; profile: Pro
       </SettingsCard>
 
       {/* Meeting preferences */}
-      <SettingsCard title="Tipos de reunión" desc="¿Qué modalidades de reunión usa tu equipo?">
+      <SettingsCard title={t("meeting_types")} desc={t("meeting_types_desc")}>
         <div className="flex flex-wrap gap-2">
-          {MEETING_TYPE_OPTS.map(({ id, label }) => {
+          {meetingTypeOpts.map(({ id, label }) => {
             const active = meetingTypes.includes(id);
             return (
               <button
