@@ -22,7 +22,11 @@ import os from 'os'
 // ── Linux: flags antes de todo ─────────────────────────────────────────────────
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('no-sandbox')
+  // VSync / GPU — evita "GetVSyncParametersIfAvailable() failed"
   app.commandLine.appendSwitch('disable-gpu-vsync')
+  app.commandLine.appendSwitch('disable-frame-rate-limit')
+  app.commandLine.appendSwitch('disable-gpu-sandbox')
+  app.commandLine.appendSwitch('ignore-gpu-blocklist')
   app.commandLine.appendSwitch('disable-software-rasterizer')
   app.commandLine.appendSwitch('enable-usermedia-screen-capturing')
 }
@@ -129,7 +133,10 @@ function createWindow(): void {
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-    mainWindow.webContents.openDevTools({ mode: 'detach' })
+    // DevTools solo si se pide explícitamente — evita errores de Autofill.enable
+    if (process.env['OPEN_DEVTOOLS'] === '1') {
+      mainWindow.webContents.openDevTools({ mode: 'detach' })
+    }
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
