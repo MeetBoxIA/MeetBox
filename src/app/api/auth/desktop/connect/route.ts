@@ -1,51 +1,75 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
+import { createHash, createDecipheriv } from "crypto";
 
-// POST — valida un código MBOX-XXXXXXXX y devuelve la info del usuario
-// Llamado por MeetBox Desktop desde la pantalla de conexión inicial.
-// No requiere sesión web — el código ES la autenticación.
+// Electron renderiza desde file:// o localhost:5173 (dev). Chromium aplica
+// CORS → necesitamos estos headers en TODAS las respuestas de este endpoint.
+const CORS = {
+  "Access-Control-Allow-Origin":  "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+function aesKey(): Buffer {
+  return createHash("sha256").update(process.env.AUTH_SECRET ?? "fallback").digest().subarray(0, 16);
+}
+
+function decryptToken(token: string): string | null {
+  try {
+    const hex = token.slice(5); // quitar "MBOX-"
+    if (hex.length !== 32) return null;
+    const decipher = createDecipheriv("aes-128-ecb", aesKey(), null);
+    decipher.setAutoPadding(false);
+    const decrypted = Buffer.concat([decipher.update(Buffer.from(hex, "hex")), decipher.final()]);
+    const h = decrypted.toString("hex");
+    // Reconstruir UUID con guiones
+    return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+  } catch {
+    return null;
+  }
+}
+
+// Preflight OPTIONS
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS });
+}
+
+// POST — valida el código MBOX-{32hex}, decripta el userId y devuelve info del usuario.
+// No requiere sesión web ni tabla adicional en DB.
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => ({}));
+  const body  = await req.json().catch(() => ({}));
   const token = String(body.token ?? "").trim().toUpperCase();
 
-  if (!/^MBOX-[0-9A-F]{8}$/.test(token)) {
-    return NextResponse.json({ error: "Código inválido." }, { status: 400 });
+  if (!/^MBOX-[0-9A-F]{32}$/.test(token)) {
+    return NextResponse.json(
+      { error: "Código inválido. Asegúrate de copiarlo completo desde Integraciones." },
+      { status: 400, headers: CORS },
+    );
   }
 
-  const db = getSupabase();
-
-  const { data: row } = await db
-    .from("desktop_tokens")
-    .select("user_id, last_used_at")
-    .eq("token", token)
-    .maybeSingle();
-
-  if (!row) {
-    return NextResponse.json({ error: "Código no encontrado o expirado." }, { status: 404 });
+  const userId = decryptToken(token);
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Código no válido o generado con una clave diferente." },
+      { status: 400, headers: CORS },
+    );
   }
 
-  // Actualizar last_used_at
-  await db
-    .from("desktop_tokens")
-    .update({ last_used_at: new Date().toISOString() })
-    .eq("token", token);
-
-  const { data: user } = await db
+  const { data: user, error } = await getSupabase()
     .from("users")
     .select("id, name, email, avatar_url")
-    .eq("id", row.user_id)
-    .single();
+    .eq("id", userId)
+    .maybeSingle();
 
-  if (!user) {
-    return NextResponse.json({ error: "Usuario no encontrado." }, { status: 404 });
+  if (error || !user) {
+    return NextResponse.json(
+      { error: "Usuario no encontrado. Genera el código de nuevo desde Integraciones." },
+      { status: 404, headers: CORS },
+    );
   }
 
-  return NextResponse.json({
-    user: {
-      id:     user.id,
-      name:   user.name,
-      email:  user.email,
-      avatar: user.avatar_url ?? null,
-    },
-  });
+  return NextResponse.json(
+    { user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar_url ?? null } },
+    { headers: CORS },
+  );
 }

@@ -20,7 +20,7 @@ export default function ConnectScreen({ onConnected }: ConnectScreenProps) {
   const [user,    setUser]    = useState<ConnectionData['user'] | null>(null)
 
   const normalized = code.trim().toUpperCase()
-  const isValid    = /^MBOX-[0-9A-F]{8}$/.test(normalized)
+  const isValid    = /^MBOX-[0-9A-F]{32}$/.test(normalized)
 
   async function handleConnect(e: React.FormEvent) {
     e.preventDefault()
@@ -105,7 +105,7 @@ export default function ConnectScreen({ onConnected }: ConnectScreenProps) {
               {[
                 'Abre el dashboard web de MeetBox',
                 'Ve a Integraciones → MeetBox Desktop',
-                'Copia el código MBOX-XXXXXXXX',
+                'Copia el código MBOX-... desde Integraciones',
               ].map((s, i) => (
                 <li key={i} className="flex items-start gap-2 text-[11px] text-slate-500">
                   <span className="w-4 h-4 rounded-full bg-[#050040]/10 text-[#050040] text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">
@@ -133,8 +133,8 @@ export default function ConnectScreen({ onConnected }: ConnectScreenProps) {
               type="text"
               value={code}
               onChange={(e) => { setCode(e.target.value); setError(null) }}
-              placeholder="MBOX-XXXXXXXX"
-              maxLength={13}
+              placeholder="MBOX-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+              maxLength={37}
               autoFocus
               className={[
                 'w-full px-4 py-3 rounded-xl border text-center font-mono text-base font-bold tracking-widest',
