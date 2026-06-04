@@ -1,4 +1,17 @@
 "use client";
+/**
+ * MeetyView — the AI assistant chat interface.
+ *
+ * Renders a two-panel layout: a conversation sidebar (list + new chat button)
+ * and a main chat area with optimistic message bubbles, a live typing
+ * animation for the assistant reply, and a "thinking" indicator while the
+ * server round-trip is in flight.
+ *
+ * Data flow:
+ *   - GET /api/meety/conversations        → sidebar list
+ *   - GET /api/meety/conversations/[id]/messages → message history
+ *   - POST /api/meety/conversations/[id]/messages → send & receive
+ */
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
@@ -16,6 +29,7 @@ type Role = "user" | "assistant";
 interface ChatMessage { id: string; role: Role; content: string; mode?: string | null; created_at: string; }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+/** Format an ISO timestamp as a human-readable relative string for the sidebar. */
 function fmtRelative(iso: string): string {
   const d = new Date(iso);
   const diff = Date.now() - d.getTime();
@@ -136,11 +150,13 @@ function AssistantMessage({
   const [visible, setVisible] = React.useState<string>(streaming ? "" : msg.content);
   const [done,    setDone]    = React.useState<boolean>(!streaming);
 
-  // When streaming, reveal the text in chunks. Total ~2.5s regardless of length.
+  // Reveal text in fixed-size chunks over ~2.5s total, regardless of reply length.
+  // This gives a consistent "typing" feel whether the reply is 20 or 800 chars.
   React.useEffect(() => {
     if (!streaming) { setVisible(msg.content); setDone(true); return; }
 
     const text = msg.content;
+    // Chunk size is proportional to length so the animation always takes ~2.5s
     const STEP = Math.max(1, Math.ceil(text.length / 120));
     let i = 0;
     let timer: ReturnType<typeof setTimeout>;
@@ -185,6 +201,8 @@ function AssistantMessage({
 }
 
 // ── ThinkingIndicator (rotating status with shimmer) ─────────────────────────
+// Cycles through different status labels so the user knows the mode that's active
+// and gets visual feedback that the server is working.
 const THINKING_STATES: Record<"normal" | "think" | "deep", string[]> = {
   normal: ["Pensando", "Analizando", "Procesando"],
   think:  ["Pensando profundamente", "Razonando", "Conectando ideas"],
@@ -325,7 +343,8 @@ export default function MeetyView({ userName, userImage }: { userName: string; u
 
     const modeStr: "normal" | "think" | "deep" = mode.deep ? "deep" : mode.think ? "think" : "normal";
 
-    // Optimistic user bubble
+    // Optimistic update: insert a temporary user bubble immediately so the
+    // UI responds instantly, then replace it with the server-confirmed message.
     const tempUserId = `tmp-${Date.now()}`;
     const tempUser: ChatMessage = {
       id: tempUserId, role: "user", content: text, mode: modeStr,
@@ -336,7 +355,8 @@ export default function MeetyView({ userName, userImage }: { userName: string; u
     setSending(true);
 
     try {
-      // Show the thinking states for at least ~1.5s so users see the rotation
+      // Hold for at least 1.5s so the thinking indicator cycles at least once
+      // even on very fast responses — avoids a jarring instant flash.
       const minDelay = new Promise((r) => setTimeout(r, 1500));
       const fetchPromise = fetch(`/api/meety/conversations/${convId}/messages`, {
         method: "POST",

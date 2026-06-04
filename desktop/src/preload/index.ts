@@ -1,8 +1,12 @@
+/**
+ * Electron preload script — bridges the main process and the renderer.
+ *
+ * Exposes a typed `window.electronAPI` object via contextBridge so React
+ * components can invoke IPC calls without direct access to Node.js or the
+ * raw ipcRenderer. This is the security boundary: only the functions listed
+ * in the `api` object below can be called from the renderer.
+ */
 import { contextBridge, ipcRenderer } from 'electron'
-
-// ── API expuesta al renderer (context seguro) ──────────────────────────────────
-// Solo las funciones declaradas aquí son accesibles desde React.
-// El renderer NO tiene acceso a Node.js ni a la API de Electron directamente.
 
 export type RecordingStatus = 'idle' | 'recording' | 'processing' | 'done' | 'error'
 
@@ -11,8 +15,8 @@ export interface AudioSource {
   name: string
 }
 
-// Definido aquí y re-exportado — el renderer importa desde su propio types.ts
-// para evitar imports cross-contexto
+// Defined here and re-exported from renderer/src/types.ts to avoid cross-context
+// imports (the renderer cannot import from preload directly in a sandboxed context).
 export interface ConnectionData {
   token:       string
   user:        { id: string; name: string; email: string; avatar: string | null }
@@ -66,6 +70,10 @@ const api = {
     ipcRenderer.invoke('http-post', url, body),
 
   // ── Escuchar eventos desde el main process ────────────────────────────────────
+  /**
+   * Subscribe to events pushed from the main process.
+   * Returns a cleanup function so React can call it in useEffect's return.
+   */
   on: (
     channel: 'tray-toggle-recording' | 'update-available' | 'update-downloaded' | 'auth-token-received',
     listener: (...args: unknown[]) => void
@@ -73,7 +81,6 @@ const api = {
     const subscription = (_event: Electron.IpcRendererEvent, ...args: unknown[]) =>
       listener(...args)
     ipcRenderer.on(channel, subscription)
-    // Retorna una función de limpieza
     return () => ipcRenderer.removeListener(channel, subscription)
   },
 }

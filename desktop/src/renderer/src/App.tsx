@@ -1,4 +1,19 @@
 'use client'
+/**
+ * App — root component of the MeetBox Desktop renderer.
+ *
+ * Three top-level states drive which screen is shown:
+ *   - connection === 'checking' → loading spinner (reading persisted connection)
+ *   - connection === null       → ConnectScreen (first-time or after disconnect)
+ *   - connection is ConnectionData → HomeView or SettingsPanel
+ *
+ * Recording pipeline:
+ *   1. getUserMedia for microphone
+ *   2. desktopCapturer (via IPC) for system audio (Zoom/Meet/Teams)
+ *   3. AudioContext to mix both streams
+ *   4. MediaRecorder (audio/webm;codecs=opus) with 1-second chunks
+ *   5. On stop: combine chunks → ArrayBuffer → save via IPC to ~/Documents/MeetBox
+ */
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import TitleBar from './components/TitleBar'
 import RecordButton from './components/RecordButton'
@@ -89,7 +104,9 @@ export default function App() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [status])
 
-  // ── Simulación de transcript en vivo (sustituir por WebSocket real) ─────────
+  // ── Live transcript simulation — replace with a real WebSocket/STT service ──
+  // Demo lines are injected every 4s while recording to show the UI working
+  // before a real speech-to-text backend is connected.
   useEffect(() => {
     if (status !== 'recording') return
     const DEMO_LINES: Omit<TranscriptLine, 'id' | 'timestamp'>[] = [
@@ -123,7 +140,8 @@ export default function App() {
         video: false,
       })
 
-      // 2. Audio del sistema (Zoom/Meet/Teams) — requiere fuente de desktopCapturer
+      // 2. System audio (Zoom/Meet/Teams) — requires a desktopCapturer source ID
+      //    from the main process because getUserMedia can't enumerate these directly.
       let systemStream: MediaStream | null = null
       try {
         const sources = await window.electronAPI.getDesktopAudioSources()
@@ -145,7 +163,7 @@ export default function App() {
         console.warn('Audio del sistema no disponible, usando solo micrófono:', sysErr)
       }
 
-      // 3. Mezclar streams con AudioContext
+      // 3. Mix mic + system audio via AudioContext into a single MediaStream
       const ctx  = new AudioContext()
       const dest = ctx.createMediaStreamDestination()
 
@@ -158,7 +176,7 @@ export default function App() {
     } catch (err) {
       const domErr = err as DOMException
       console.error('getUserMedia error:', domErr.name, domErr.message)
-      // Re-lanzar con mensaje específico para que el caller lo muestre
+      // Re-throw so the caller can map DOMException.name to a user-friendly message
       throw domErr
     }
   }, [])
@@ -203,7 +221,7 @@ export default function App() {
       if (e.data.size > 0) audioChunksRef.current.push(e.data)
     }
     mediaRecorderRef.current = recorder
-    recorder.start(1000) // chunk cada 1s
+    recorder.start(1000) // emit a chunk every 1s so data isn't lost on unexpected stop
 
     setStatus('recording')
     window.electronAPI.notifyRecordingState(true)
@@ -223,7 +241,7 @@ export default function App() {
 
     stopAudioCapture()
 
-    // Combinar chunks en un solo Blob
+    // Concatenate all 1-second chunks into a single Blob before saving
     const blob     = new Blob(audioChunksRef.current, { type: 'audio/webm;codecs=opus' })
     const buffer   = await blob.arrayBuffer()
     const filename = buildFilename()

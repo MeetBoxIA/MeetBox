@@ -1,7 +1,20 @@
+/**
+ * ConnectScreen — first-run screen that links the desktop app to a web account.
+ *
+ * The user pastes the MBOX-{32hex} token they copied from the web dashboard's
+ * Integrations page. The token is sent to /api/auth/desktop/connect via the
+ * main-process HTTP proxy (IPC) to avoid CORS/HTTPS issues in the renderer.
+ *
+ * On success, the connection (token + user info + timestamp) is persisted to
+ * ~/AppData/.../connection.json via the `save-connection` IPC handler, and the
+ * parent App component transitions to the main HomeView.
+ */
 import React, { useState } from 'react'
 import type { ConnectionData } from '../types'
 
-// La URL del backend — configurable via variable de entorno en el build
+// Backend URL — overridable at build time via VITE_MEETBOX_API_URL env var.
+// The complex typeof guard handles environments where import.meta.env is
+// not available (e.g. Jest or non-Vite bundlers).
 const MEETBOX_API: string = (
   typeof import.meta !== 'undefined' && (import.meta as Record<string, unknown>).env
     ? ((import.meta as Record<string, unknown>).env as Record<string, string>).VITE_MEETBOX_API_URL
@@ -29,7 +42,8 @@ export default function ConnectScreen({ onConnected }: ConnectScreenProps) {
     setError(null)
 
     try {
-      // Usar el proxy IPC del main process (Node.js) para evitar bloqueos CORS/HTTPS
+      // Route through the main-process HTTP proxy to bypass Chromium CORS/null-origin
+      // restrictions that would block a direct fetch from the renderer.
       const { ok, data } = await window.electronAPI.httpPost(
         `${MEETBOX_API}/api/auth/desktop/connect`,
         { token: normalized },
@@ -52,6 +66,7 @@ export default function ConnectScreen({ onConnected }: ConnectScreenProps) {
       setUser(userData)
       setStep('success')
 
+      // Brief delay so the user sees the success state before transitioning
       setTimeout(() => onConnected(connection), 1500)
     } catch (err) {
       setError('No se pudo conectar: ' + (err instanceof Error ? err.message : String(err)))

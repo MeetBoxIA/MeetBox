@@ -1,4 +1,15 @@
 "use client";
+/**
+ * MeetingsView — three-tab view for today's meetings, recording import, and history.
+ *
+ * Tabs:
+ *   "today"   — fetches /api/meetings/today; shows meetings with room + recording badges
+ *   "import"  — drag-and-drop / file picker to upload audio/video to Supabase Storage
+ *   "history" — paginated list of past recordings from meeting_recordings table
+ *
+ * Recording import calls /api/meetings/recordings (not listed here) to upload
+ * the file to Supabase Storage and create a meeting_recordings row.
+ */
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import {

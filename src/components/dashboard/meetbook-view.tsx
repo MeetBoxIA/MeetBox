@@ -1,4 +1,20 @@
 "use client";
+/**
+ * MeetBookView — Notion-style block editor for notes and notebooks.
+ *
+ * Notes are stored as a JSON array of Block objects (paragraph, h1-h3,
+ * bullet, numbered, toggle, quote, code, divider). Legacy plain-text
+ * content is transparently migrated to a single paragraph block on load.
+ *
+ * Key design choices:
+ *   - Blocks use contentEditable divs for rich editing without a heavy
+ *     editor library. execCommand is used for bold/italic/underline.
+ *   - The "/" command palette (BlockTypeMenu) appears when the cursor is
+ *     on an empty block and the user types "/".
+ *   - Auto-save is debounced (1 second of inactivity) to avoid hammering
+ *     the API on every keystroke.
+ *   - Trash uses soft-delete (deleted_at) so items can be restored.
+ */
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
@@ -23,6 +39,13 @@ interface Block { id: string; type: BlockType; content: string; collapsed?: bool
 function genId() { return Math.random().toString(36).slice(2, 10); }
 function emptyBlock(type: BlockType = "paragraph"): Block { return { id: genId(), type, content: "" }; }
 
+/**
+ * Parse raw note content into a Block array.
+ * Handles three cases:
+ *   1. Valid JSON array of blocks → use as-is
+ *   2. Empty string → single empty paragraph
+ *   3. Legacy plain text → wrap in a paragraph block (one-time migration)
+ */
 function parseBlocks(raw: string): Block[] {
   try {
     const p = JSON.parse(raw);
@@ -92,6 +115,9 @@ function blockPlaceholder(type: BlockType): string {
 }
 
 // ── Caret helpers ──────────────────────────────────────────────────────────────
+// contentEditable doesn't expose a simple cursor API; we must use the
+// Range/Selection API to programmatically position the cursor after block
+// type changes or Enter/Backspace merges.
 function placeCaretAtEnd(el: HTMLElement) {
   el.focus();
   const range = document.createRange();
@@ -129,6 +155,8 @@ function EmojiPicker({ emojis, onSelect, onClose }: { emojis: string[]; onSelect
 }
 
 // ── BlockTypeMenu ──────────────────────────────────────────────────────────────
+// Slash-command palette: appears when the user types "/" in an empty block.
+// Uses onMouseDown (not onClick) so the block doesn't lose focus before selection.
 function BlockTypeMenu({ query, onSelect, onClose }: {
   query: string;
   onSelect: (type: BlockType) => void;

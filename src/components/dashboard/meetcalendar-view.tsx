@@ -1,4 +1,17 @@
 "use client";
+/**
+ * MeetCalendarView — full calendar component with month/week/day views.
+ *
+ * Supports:
+ *   - Three views: month (grid), week (hourly column), day (hourly single)
+ *   - Event types: meeting, event, reminder — each with its own color and icon
+ *   - Recurrence: daily and weekly patterns with optional end date
+ *   - Google Calendar push via the events API (when user has linked their account)
+ *   - Keyboard navigation: arrow keys move the current date; Escape closes modals
+ *
+ * Recurring events are expanded server-side and returned as virtual instances
+ * that share the original event's id but have shifted start_at/end_at.
+ */
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import {
@@ -54,6 +67,8 @@ interface EventFormData {
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
+// Week starts on Monday (ISO 8601) — JS getDay() returns 0=Sun, so we remap
+// with (day + 6) % 7 everywhere to get 0=Mon … 6=Sun.
 const MONTHS_ES = [
   "Enero","Febrero","Marzo","Abril","Mayo","Junio",
   "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre",
@@ -110,6 +125,11 @@ function fmtTime(iso: string): string {
 function fmtDateLong(d: Date): string {
   return `${DAYS_LONG[(d.getDay() + 6) % 7]}, ${d.getDate()} de ${MONTHS_ES[d.getMonth()]} ${d.getFullYear()}`;
 }
+/**
+ * Compute the API query range for the current view.
+ * Month view fetches one extra month on each side so events near the grid
+ * edges (days from adjacent months) are also included.
+ */
 function getViewRange(view: CalView, date: Date): { start: string; end: string } {
   if (view === "month") {
     const y = date.getFullYear(), m = date.getMonth();
@@ -167,6 +187,11 @@ function eventToForm(ev: CalEvent): EventFormData {
     recurrence_until: ev.recurrence_until ? ev.recurrence_until.split("T")[0] : "",
   };
 }
+/**
+ * Return the local UTC offset as a string like "+05:30" or "-03:00".
+ * Used to build ISO 8601 timestamps that carry the user's timezone so the
+ * server stores the event in the right local time.
+ */
 function localOffsetStr(): string {
   const off  = -new Date().getTimezoneOffset();
   const sign = off >= 0 ? "+" : "-";

@@ -1,3 +1,18 @@
+/**
+ * MeetBox Desktop — Electron main process.
+ *
+ * Responsibilities:
+ *   - Create the frameless BrowserWindow and system tray
+ *   - Register the `meetbox://` deep-link protocol handler
+ *   - Expose IPC handlers for the renderer (window controls, connection
+ *     persistence, audio capture, recording save, HTTP proxy)
+ *   - Manage the auto-updater lifecycle (check, notify, install)
+ *   - Request microphone/audio permissions from Chromium's permission system
+ *
+ * The HTTP proxy IPC handler (`http-post`) lets the renderer make requests
+ * to the MeetBox backend through Node.js, bypassing Chromium's CORS
+ * restrictions that block requests from file:// and null origins.
+ */
 import {
   app,
   shell,
@@ -19,10 +34,12 @@ import AutoLaunch from 'auto-launch'
 import fs from 'fs'
 import os from 'os'
 
-// ── Linux: flags antes de todo ─────────────────────────────────────────────────
+// ── Linux: flags must be set before app.on('ready') ───────────────────────────
+// These suppress GPU/VSync errors that appear on many Linux desktop environments
+// and are harmless on hardware where the GPU path works correctly.
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('no-sandbox')
-  // VSync / GPU — evita "GetVSyncParametersIfAvailable() failed"
+  // Suppress "GetVSyncParametersIfAvailable() failed" log spam
   app.commandLine.appendSwitch('disable-gpu-vsync')
   app.commandLine.appendSwitch('disable-frame-rate-limit')
   app.commandLine.appendSwitch('disable-gpu-sandbox')
@@ -39,6 +56,9 @@ let isRecording = false
 const MEETBOX_API_URL = process.env.MEETBOX_API_URL ?? 'https://meetbox.io'
 
 // ── Single instance lock ───────────────────────────────────────────────────────
+// Register the meetbox:// URI scheme so the OS can deep-link into the app.
+// process.defaultApp is true when Electron itself is the executable (dev mode
+// via `electron .`), requiring the path to be passed as a protocol client arg.
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
     app.setAsDefaultProtocolClient('meetbox', process.execPath, [process.argv[1]])
@@ -47,8 +67,8 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient('meetbox')
 }
 
-// En dev mode no forzamos single instance para que los reinicios con
-// hot-reload no dejen un proceso viejo bloqueando la nueva instancia.
+// Skip single-instance lock in dev so hot-reload restarts don't leave a
+// stale process holding the lock and blocking the new instance.
 const isDev = process.env.NODE_ENV === 'development' || !!process.env.ELECTRON_RENDERER_URL
 if (!isDev) {
   const gotTheLock = app.requestSingleInstanceLock()
@@ -67,6 +87,11 @@ if (!isDev) {
 
 app.on('open-url', (_event, url) => handleDeepLink(url))
 
+/**
+ * Handle a meetbox:// deep link URL.
+ * Currently only the /auth path is used — the web dashboard redirects here
+ * after OAuth with ?token=... so the renderer can finalize the connection.
+ */
 function handleDeepLink(url: string) {
   try {
     const parsed = new URL(url)
@@ -74,7 +99,7 @@ function handleDeepLink(url: string) {
       const token = parsed.searchParams.get('token')
       if (token) mainWindow?.webContents.send('auth-token-received', token)
     }
-  } catch { /* URL inválida, ignorar */ }
+  } catch { /* invalid URL — ignore silently */ }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -84,6 +109,11 @@ interface ConnectionData {
   connectedAt: string
 }
 
+/**
+ * Path to the JSON file that persists the user's desktop connection.
+ * Stored in Electron's userData directory (OS-specific app data folder)
+ * so it survives app restarts and updates.
+ */
 function connectionFile(): string {
   return join(app.getPath('userData'), 'connection.json')
 }
@@ -104,8 +134,8 @@ function createWindow(): void {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
-      // Necesario para que el renderer pueda hacer fetch a localhost
-      // sin que Chromium rechace la request por CORS / null-origin.
+      // webSecurity: false lets the renderer fetch localhost without Chromium
+      // rejecting requests due to CORS / null-origin from file:// pages.
       webSecurity: false,
     },
   })
@@ -171,7 +201,7 @@ function createTray(): void {
   tray.setContextMenu(buildMenu())
   tray.on('double-click', () => { mainWindow?.show(); mainWindow?.focus() })
 
-  // El renderer notifica cambios de estado de grabación
+  // Keep tray menu and tooltip in sync with the renderer's recording state
   ipcMain.on('recording-state-changed', (_e, recording: boolean) => {
     isRecording = recording
     tray?.setContextMenu(buildMenu())
@@ -229,8 +259,8 @@ function registerIpcHandlers(): void {
   })
 
   // ── Auto-launch ──────────────────────────────────────────────────────────────
-  // Construir AutoLaunch aquí (dentro de whenReady) para evitar errores de
-  // app.getPath('exe') antes de que la app esté lista en Linux
+  // Instantiate AutoLaunch inside whenReady() — calling app.getPath('exe') before
+  // the app is ready throws on Linux, so we can't do this at module top-level.
   let autoLaunch: AutoLaunch | null = null
   try {
     autoLaunch = new AutoLaunch({ name: 'MeetBox Desktop', path: app.getPath('exe') })
@@ -290,9 +320,10 @@ function registerIpcHandlers(): void {
   // ── Auto-updater install ─────────────────────────────────────────────────────
   ipcMain.on('install-update', () => autoUpdater.quitAndInstall())
 
-  // ── HTTP proxy — Node.js no tiene restricciones CORS ─────────────────────────
-  // El renderer llama a este handler para hacer requests al backend web
-  // sin que Chromium las bloquee por CORS / null-origin.
+  // ── HTTP proxy via Node.js (no CORS restrictions) ─────────────────────────
+  // Chromium blocks requests from file:// to external origins; Node.js fetch
+  // in the main process has no such restriction. The renderer calls this
+  // handler to proxy API requests through the main process instead.
   ipcMain.handle('http-post', async (_e, url: string, body: unknown) => {
     try {
       const res  = await fetch(url, {
@@ -341,7 +372,8 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('window-all-closed', () => { /* mantenemos viva la app via tray */ })
+// Keep the app alive via the tray even when all windows are closed
+app.on('window-all-closed', () => { /* intentionally no-op — tray keeps app running */ })
 
 declare global {
   namespace Electron { interface App { isQuitting: boolean } }
