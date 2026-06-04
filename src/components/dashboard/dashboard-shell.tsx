@@ -10,7 +10,7 @@ import {
   Building2, Shield, CreditCard, Trash2, AlertTriangle, Save,
   Eye, EyeOff, Check, Link2, Zap, CheckCircle2, Globe,
   ArrowRight, MapPin, MessageCircle, Sun, Moon,
-  Monitor, Copy, RefreshCw, Download,
+  Monitor, Copy, RefreshCw, Download, Cpu,
 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
@@ -23,6 +23,7 @@ import RoomsView        from "./rooms-view";
 import MeetingsView     from "./meetings-view";
 import OnboardingTour  from "./onboarding-tour";
 import MeetyView       from "./meety-view";
+import MeetActionView  from "./meetaction-view";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface User    { name: string; email: string; image: string | null }
@@ -42,6 +43,7 @@ function getNavItems(t: (k: TranslationKey) => string) {
     { id: "rooms",    label: t("nav_rooms"),         icon: DoorOpen,        children: null },
     { id: "meetcalendar", label: t("nav_meetcalendar"), icon: Calendar,     children: null },
     { id: "meetbook",     label: t("nav_meetbook"),     icon: BookOpen,     children: null },
+    { id: "meetaction",   label: "MeetAction",          icon: Cpu,          children: null },
     { id: "integrations", label: t("nav_integrations"), icon: Puzzle,       children: null },
     {
       id: "settings", label: t("nav_settings"), icon: Settings, children: [
@@ -63,6 +65,7 @@ function getSectionTitles(t: (k: TranslationKey) => string): Record<string, stri
     meetcalendar:             t("section_meetcalendar"),
     meety:                    t("section_meety"),
     meetbook:                 t("section_meetbook"),
+    meetaction:               "MeetAction · Acciones IA",
     integrations:             t("section_integrations"),
     "settings-profile":       t("section_settings_profile"),
     "settings-notifications": t("section_settings_notifications"),
@@ -1816,6 +1819,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
       case "home":                    return <HomeView user={user} onNavigate={setActiveNav} />;
       case "meetcalendar":            return <MeetCalendarView />;
       case "meetbook":                return <MeetBookView />;
+      case "meetaction":              return <MeetActionView />;
       case "integrations":            return <IntegrationsView profile={profile} onUpdate={handleProfileUpdate} />;
       case "settings-profile":        return <SettingsProfile user={user} profile={profile} onUpdate={handleProfileUpdate} />;
       case "settings-notifications":  return <SettingsNotifications />;
@@ -1851,7 +1855,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
         <Header activeNav={activeNav} user={user} onMenuClick={() => setSidebarOpen(true)} setActiveNav={setActiveNav} />
         <main className={cn(
           "flex-1 min-h-0",
-          (activeNav === "meetbook" || activeNav === "meetcalendar" || activeNav === "meety")
+          (activeNav === "meetbook" || activeNav === "meetcalendar" || activeNav === "meety" || activeNav === "meetaction")
             ? "overflow-hidden"
             : "overflow-y-auto p-4 sm:p-6",
         )}>
