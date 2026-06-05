@@ -1,0 +1,74 @@
+appId: io.meetbox.desktop
+productName: MeetBox Desktop
+copyright: "Copyright © 2025 MeetBox"
+
+# Carpeta de recursos de build (iconos, license, etc.)
+directories:
+  buildResources: build
+  output: dist
+
+# Qué incluir en el paquete
+files:
+  - out/**/*
+
+# ── Windows ────────────────────────────────────────────────────────────────────
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64, ia32]
+  # Nivel de ejecución (sin elevación de admin)
+  requestedExecutionLevel: asInvoker
+  # Registro de protocolo deep-link meetbox://
+  protocols:
+    - name: MeetBox Protocol
+      schemes: [meetbox]
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: MeetBox Desktop
+  # El instalador NSIS pregunta al usuario dónde instalar
+
+# ── macOS ──────────────────────────────────────────────────────────────────────
+mac:
+  icon: build/icon.icns
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  protocols:
+    - name: MeetBox Protocol
+      schemes: [meetbox]
+
+dmg:
+  title: MeetBox Desktop ${version}
+  iconSize: 128
+  contents:
+    - x: 410
+      y: 175
+      type: link
+      path: /Applications
+    - x: 130
+      y: 175
+      type: file
+
+# ── Linux ──────────────────────────────────────────────────────────────────────
+linux:
+  icon: build/icon.png
+  target: AppImage
+  category: Office
+
+# ── Auto-updater (GitHub Releases) ────────────────────────────────────────────
+publish:
+  provider: github
+  owner: MeetBoxIA
+  repo: meetbox-desktop
+  releaseType: release

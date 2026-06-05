@@ -9,8 +9,11 @@ import {
   LogOut, Clock, Users, Sparkles, Menu, X, User, Mail,
   Building2, Shield, CreditCard, Trash2, AlertTriangle, Save,
   Eye, EyeOff, Check, Link2, Zap, CheckCircle2, Globe,
-  ArrowRight, MapPin,
+  ArrowRight, MapPin, MessageCircle, Sun, Moon,
+  Monitor, Copy, RefreshCw, Download, Cpu,
 } from "lucide-react";
+import { useTheme } from "@/lib/theme";
+import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
 import { SiSlack, SiGooglecalendar, SiJira, SiNotion } from "react-icons/si";
 import { TbBrandTeams, TbBrandZoom } from "react-icons/tb";
 import { signOut } from "next-auth/react";
@@ -19,6 +22,8 @@ import MeetCalendarView from "./meetcalendar-view";
 import RoomsView        from "./rooms-view";
 import MeetingsView     from "./meetings-view";
 import OnboardingTour  from "./onboarding-tour";
+import MeetyView       from "./meety-view";
+import MeetActionView  from "./meetaction-view";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface User    { name: string; email: string; image: string | null }
@@ -31,36 +36,43 @@ interface Profile {
 interface DashboardShellProps { user: User; profile: Profile }
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
-const NAV_ITEMS = [
-  { id: "home",     label: "Inicio",      icon: LayoutDashboard, children: null },
-  { id: "meetings", label: "Reuniones",   icon: Video,           children: null },
-  { id: "rooms", label: "Salas", icon: DoorOpen, children: null },
-  { id: "meetcalendar", label: "MeetCalendar", icon: Calendar,  children: null },
-  { id: "meetbook",     label: "MeetBook",     icon: BookOpen,  children: null },
-  { id: "integrations", label: "Integraciones", icon: Puzzle,  children: null },
-  {
-    id: "settings", label: "Configuración", icon: Settings, children: [
-      { id: "settings-profile",       label: "Perfil",          icon: User    },
-      { id: "settings-notifications", label: "Notificaciones",  icon: Bell    },
-      { id: "settings-security",      label: "Seguridad",       icon: Shield  },
-      { id: "settings-account",       label: "Cuenta",          icon: CreditCard },
-    ],
-  },
-];
+function getNavItems(t: (k: TranslationKey) => string) {
+  return [
+    { id: "home",     label: t("nav_home"),         icon: LayoutDashboard, children: null },
+    { id: "meetings", label: t("nav_meetings"),      icon: Video,           children: null },
+    { id: "rooms",    label: t("nav_rooms"),         icon: DoorOpen,        children: null },
+    { id: "meetcalendar", label: t("nav_meetcalendar"), icon: Calendar,     children: null },
+    { id: "meetbook",     label: t("nav_meetbook"),     icon: BookOpen,     children: null },
+    { id: "meetaction",   label: "MeetAction",          icon: Cpu,          children: null },
+    { id: "integrations", label: t("nav_integrations"), icon: Puzzle,       children: null },
+    {
+      id: "settings", label: t("nav_settings"), icon: Settings, children: [
+        { id: "settings-profile",       label: t("nav_profile"),       icon: User    },
+        { id: "settings-notifications", label: t("nav_notifications"), icon: Bell    },
+        { id: "settings-security",      label: t("nav_security"),      icon: Shield  },
+        { id: "settings-account",       label: t("nav_account"),       icon: CreditCard },
+      ],
+    },
+  ];
+}
 
-const SECTION_TITLES: Record<string, string> = {
-  home:                    "Inicio",
-  meetings:                "Reuniones",
-  rooms:                   "Salas",
-  "rooms-meetings":        "Salas · Reuniones",
-  meetcalendar:            "MeetCalendar",
-  meetbook:                "MeetBook",
-  integrations:            "Integraciones",
-  "settings-profile":      "Configuración · Perfil",
-  "settings-notifications":"Configuración · Notificaciones",
-  "settings-security":     "Configuración · Seguridad",
-  "settings-account":      "Configuración · Cuenta",
-};
+function getSectionTitles(t: (k: TranslationKey) => string): Record<string, string> {
+  return {
+    home:                     t("section_home"),
+    meetings:                 t("section_meetings"),
+    rooms:                    t("section_rooms"),
+    "rooms-meetings":         t("section_rooms_meetings"),
+    meetcalendar:             t("section_meetcalendar"),
+    meety:                    t("section_meety"),
+    meetbook:                 t("section_meetbook"),
+    meetaction:               "MeetAction · Acciones IA",
+    integrations:             t("section_integrations"),
+    "settings-profile":       t("section_settings_profile"),
+    "settings-notifications": t("section_settings_notifications"),
+    "settings-security":      t("section_settings_security"),
+    "settings-account":       t("section_settings_account"),
+  };
+}
 
 // ── Integration catalogue ─────────────────────────────────────────────────────
 const INTEGRATION_LIST = [
@@ -101,11 +113,17 @@ const MEETING_TYPE_OPTS = [
 
 // ── Small utilities ───────────────────────────────────────────────────────────
 function Avatar({ name, image, size = "md" }: { name: string; image: string | null; size?: "sm" | "md" }) {
+  const [broken, setBroken] = React.useState(false);
   const initials = name.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase();
   const sz = size === "sm" ? "w-7 h-7 text-xs" : "w-9 h-9 text-sm";
-  if (image) return (
+  if (image && !broken) return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={image} alt={name} className={cn(sz, "rounded-full object-cover border border-slate-100 shrink-0")} />
+    <img
+      src={image}
+      alt={name}
+      onError={() => setBroken(true)}
+      className={cn(sz, "rounded-full object-cover border border-slate-100 shrink-0")}
+    />
   );
   return (
     <div className={cn(sz, "rounded-full bg-[#050040] text-white flex items-center justify-center font-semibold shrink-0")}>
@@ -145,6 +163,7 @@ function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean
 }
 
 function SaveBtn({ loading, saved }: { loading: boolean; saved: boolean }) {
+  const { t } = useTranslation();
   return (
     <button
       type="submit"
@@ -156,18 +175,84 @@ function SaveBtn({ loading, saved }: { loading: boolean; saved: boolean }) {
           : "bg-[#050040] text-white hover:bg-[#050040]/90 disabled:opacity-60",
       )}
     >
-      {saved ? <><CheckCircle2 className="w-4 h-4" />Guardado</> : loading ? "Guardando…" : <><Save className="w-4 h-4" />Guardar cambios</>}
+      {saved ? <><CheckCircle2 className="w-4 h-4" />{t("saved")}</> : loading ? t("saving") : <><Save className="w-4 h-4" />{t("save_changes")}</>}
     </button>
+  );
+}
+
+// ── Meety chat button (lives in the sidebar) ─────────────────────────────────
+function MeetyButton({ active, onClick }: { active: boolean; onClick: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="relative">
+      {/* Outer glow aura */}
+      <div
+        className="absolute inset-0 rounded-2xl blur-md opacity-50 group-hover:opacity-75 transition-opacity duration-300"
+        style={{ background: "linear-gradient(135deg, #050040, #1a1a8c)" }}
+      />
+      <button
+        onClick={onClick}
+        className={cn(
+          "group relative w-full overflow-hidden rounded-2xl px-4 py-5 text-left transition-all duration-300",
+          active
+            ? "ring-2 ring-white/40 shadow-2xl scale-[1.01]"
+            : "hover:-translate-y-1 hover:shadow-2xl",
+        )}
+        style={{ background: "linear-gradient(135deg, #050040 0%, #0c0c63 45%, #1a1a8c 100%)" }}
+      >
+        {/* Decorative orbs */}
+        <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/8 group-hover:scale-110 transition-transform duration-500" />
+        <div className="absolute -bottom-12 -left-10 w-32 h-32 rounded-full bg-indigo-400/10" />
+        <div className="absolute top-3 right-3">
+          <Sparkles className="w-3.5 h-3.5 text-white/30 group-hover:text-yellow-300/60 transition-colors duration-300" />
+        </div>
+
+        {/* Main content — centred column */}
+        <div className="relative flex flex-col items-center text-center gap-3">
+          {/* Avatar with ping ring */}
+          <div className="relative">
+            <div
+              className="absolute inset-0 rounded-full bg-indigo-400/30 animate-ping"
+              style={{ animationDuration: "2.5s" }}
+            />
+            <div className="relative w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-lg">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/undraw_ai-research-assistant_cxx0.svg" alt="" className="w-11 h-11 object-contain" />
+            </div>
+          </div>
+
+          {/* Text */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-center gap-1.5">
+              <p className="text-base font-bold text-white leading-tight">{t("meety_chat")}</p>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            </div>
+            <p className="text-xs text-white/65 leading-snug">
+              {t("meety_subtitle")}
+            </p>
+          </div>
+
+          {/* CTA chip */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 group-hover:bg-white/25 transition-colors duration-300 border border-white/10">
+            <MessageCircle className="w-3.5 h-3.5 text-white/80" />
+            <span className="text-[11px] font-semibold text-white/90">{t("meety_cta")}</span>
+          </div>
+        </div>
+      </button>
+    </div>
   );
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 function SidebarContent({
-  user, profile, activeNav, setActiveNav, onClose,
+  user, profile, activeNav, setActiveNav, onClose, onMeetyOpen,
 }: {
   user: User; profile: Profile;
-  activeNav: string; setActiveNav: (id: string) => void; onClose?: () => void;
+  activeNav: string; setActiveNav: (id: string) => void;
+  onClose?: () => void; onMeetyOpen: () => void;
 }) {
+  const { t } = useTranslation();
+  const navItems = getNavItems(t);
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Logo */}
@@ -195,7 +280,7 @@ function SidebarContent({
 
       {/* Nav */}
       <nav className="flex-1 px-4 py-5 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.map(({ id, label, icon: Icon, children }) => {
+        {navItems.map(({ id, label, icon: Icon, children }) => {
           const active     = activeNav === id || activeNav.startsWith(id + "-");
           const isExpanded = active && !!children;
           const isRooms    = id === "rooms";
@@ -273,12 +358,9 @@ function SidebarContent({
         })}
       </nav>
 
-      {/* CTA */}
-      <div className="px-4 pb-4 shrink-0">
-        <button className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 text-base font-medium hover:border-[#050040]/40 hover:text-[#050040] transition-all group">
-          <Plus className="w-5 h-5 group-hover:scale-110 transition-transform" />
-          Nueva reunión
-        </button>
+      {/* Meety chat button */}
+      <div className="px-4 pt-2 pb-4 shrink-0">
+        <MeetyButton active={activeNav === "meety"} onClick={() => { onMeetyOpen(); onClose?.(); }} />
       </div>
 
       {/* User */}
@@ -311,9 +393,43 @@ const USER_MENU = [
   { id: "integrations",           label: "Integraciones",  icon: Puzzle     },
 ];
 
+// ── Theme toggle button ────────────────────────────────────────────────────────
+function ThemeToggleBtn() {
+  const { resolvedTheme, toggleTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+  return (
+    <button
+      onClick={toggleTheme}
+      title={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+      className={cn(
+        "relative p-2 rounded-xl transition-all duration-300 shrink-0 group overflow-hidden",
+        isDark
+          ? "bg-indigo-950/60 hover:bg-indigo-900/60 text-indigo-300"
+          : "hover:bg-slate-50 text-slate-500 hover:text-slate-800",
+      )}
+    >
+      <span className="relative block w-5 h-5">
+        <Sun
+          className={cn(
+            "absolute inset-0 w-5 h-5 transition-all duration-300",
+            isDark ? "opacity-0 rotate-90 scale-50" : "opacity-100 rotate-0 scale-100",
+          )}
+        />
+        <Moon
+          className={cn(
+            "absolute inset-0 w-5 h-5 transition-all duration-300",
+            isDark ? "opacity-100 rotate-0 scale-100" : "opacity-0 -rotate-90 scale-50",
+          )}
+        />
+      </span>
+    </button>
+  );
+}
+
 function Header({ activeNav, user, onMenuClick, setActiveNav }: {
   activeNav: string; user: User; onMenuClick: () => void; setActiveNav: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const [search, setSearch] = React.useState("");
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -327,17 +443,17 @@ function Header({ activeNav, user, onMenuClick, setActiveNav }: {
         "text-base font-semibold text-slate-800 min-w-0 truncate",
         searchOpen ? "hidden md:block" : "block",
       )}>
-        {SECTION_TITLES[activeNav] ?? "Dashboard"}
+        {getSectionTitles(t)[activeNav] ?? "Dashboard"}
       </h1>
       <div className="hidden md:flex flex-1 max-w-sm relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-        <input type="text" placeholder="Buscar reuniones..." value={search} onChange={(e) => setSearch(e.target.value)}
+        <input type="text" placeholder={t("search_placeholder")} value={search} onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm placeholder:text-slate-400 outline-none focus:border-[#050040]/40 focus:ring-2 focus:ring-[#050040]/8 transition" />
       </div>
       {searchOpen && (
         <div className="md:hidden flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-          <input autoFocus type="text" placeholder="Buscar..." value={search} onChange={(e) => setSearch(e.target.value)}
+          <input autoFocus type="text" placeholder={t("search_placeholder")} value={search} onChange={(e) => setSearch(e.target.value)}
             onBlur={() => { if (!search) setSearchOpen(false); }}
             className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm outline-none focus:border-[#050040]/40 transition" />
         </div>
@@ -349,6 +465,8 @@ function Header({ activeNav, user, onMenuClick, setActiveNav }: {
             <Search className="w-5 h-5 text-slate-500" />
           </button>
         )}
+        {/* Theme toggle */}
+        <ThemeToggleBtn />
         <button className="relative p-2 rounded-xl hover:bg-slate-50 transition-colors group shrink-0">
           <Bell className="w-5 h-5 text-slate-500 group-hover:text-slate-800 transition-colors" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#050040] rounded-full border-2 border-white" />
@@ -451,6 +569,7 @@ const HOME_GATEWAYS = [
 ];
 
 function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) => void }) {
+  const { t, locale } = useTranslation();
   const [meetings, setMeetings] = React.useState<HomeMeeting[]>([]);
   const [loading,  setLoading]  = React.useState(true);
 
@@ -462,8 +581,26 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
       .finally(() => setLoading(false));
   }, []);
 
+  function relativeUntilLocal(iso: string): string {
+    const diff = new Date(iso).getTime() - Date.now();
+    const mins = Math.round(diff / 60000);
+    if (mins <= 0) return t("home_relative_now");
+    if (mins < 60) return `en ${mins} min`;
+    const hrs = Math.floor(mins / 60);
+    const rem = mins % 60;
+    if (hrs < 24) return rem > 0 ? `en ${hrs} h ${rem} min` : `en ${hrs} h`;
+    return locale === "en" ? "later today" : "más tarde hoy";
+  }
+
+  const homeGateways = [
+    { id: "meetcalendar", label: t("nav_meetcalendar"), desc: t("home_cal_desc"),   icon: Calendar, color: "#050040" },
+    { id: "rooms",        label: t("nav_rooms"),        desc: t("home_rooms_desc"), icon: DoorOpen, color: "#059669" },
+    { id: "meetbook",     label: t("nav_meetbook"),     desc: t("home_book_desc"),  icon: BookOpen, color: "#7c3aed" },
+    { id: "meetings",     label: t("nav_meetings"),     desc: t("home_meet_desc"),  icon: Video,    color: "#d97706" },
+  ];
+
   const hour      = new Date().getHours();
-  const greeting  = hour < 12 ? "Buenos días" : hour < 19 ? "Buenas tardes" : "Buenas noches";
+  const greeting  = hour < 12 ? t("greeting_morning") : hour < 19 ? t("greeting_afternoon") : t("greeting_evening");
   const firstName = user.name.split(" ")[0];
   const dateStr   = new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
 
@@ -474,12 +611,12 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
   const next     = upcoming[0] ?? null;
 
   const contextual = loading
-    ? "Preparando tu día…"
+    ? t("home_context_preparing")
     : next
-      ? <>Tu próxima reunión es <span className="text-white font-semibold">{relativeUntil(next.start_at)}</span>.</>
+      ? <>{t("home_next_in")} <span className="text-white font-semibold">{relativeUntilLocal(next.start_at)}</span>.</>
       : meetings.length > 0
-        ? "Ya pasaron tus reuniones de hoy. Buen trabajo. 👏"
-        : "No tienes reuniones hoy. Un buen momento para ordenar tus ideas.";
+        ? t("home_done_today")
+        : t("home_no_meetings");
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -509,7 +646,7 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
           <div className="px-6 pt-5 pb-2 flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-[#050040]" />
-            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wide">Lo que sigue</h2>
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wide">{t("home_next_meeting")}</h2>
           </div>
           <div className="px-6 pb-6 flex items-center gap-5">
             <div className="text-center shrink-0 w-20">
@@ -520,7 +657,7 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
             <div className="flex-1 min-w-0">
               <span className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full mb-1.5"
                 style={{ backgroundColor: next.color + "18", color: next.color }}>
-                {relativeUntil(next.start_at)}
+                {relativeUntilLocal(next.start_at)}
               </span>
               <h3 className="text-lg font-semibold text-slate-800 truncate">{next.title}</h3>
               <div className="flex items-center gap-3 mt-1.5 flex-wrap">
@@ -541,7 +678,7 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
             </div>
             <button onClick={() => onNavigate("meetcalendar")}
               className="shrink-0 flex items-center gap-1.5 px-5 py-3 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 transition-colors">
-              <span className="hidden sm:inline">Ver</span><ArrowRight className="w-4 h-4" />
+              <span className="hidden sm:inline">{t("home_view")}</span><ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -550,21 +687,21 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/undraw_writing-online_x665.svg" alt="" className="hidden sm:block w-28 h-auto shrink-0" draggable={false} />
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-slate-800">Tu día está despejado</h3>
-            <p className="text-sm text-slate-400 mt-1">Captura ideas en MeetBook o planifica algo en tu calendario.</p>
+            <h3 className="text-lg font-semibold text-slate-800">{t("home_clear_day")}</h3>
+            <p className="text-sm text-slate-400 mt-1">{t("home_clear_desc")}</p>
           </div>
           <button onClick={() => onNavigate("meetbook")}
             className="shrink-0 flex items-center gap-1.5 px-5 py-3 rounded-xl bg-[#050040]/8 text-[#050040] text-sm font-semibold hover:bg-[#050040]/12 transition-colors">
-            Abrir MeetBook<ArrowRight className="w-4 h-4" />
+            {t("home_open_meetbook")}<ArrowRight className="w-4 h-4" />
           </button>
         </div>
       )}
 
       {/* ── Gateways ── */}
       <div>
-        <h2 className="text-base font-bold text-slate-700 mb-4 px-1">¿Por dónde empezamos, {firstName}?</h2>
+        <h2 className="text-base font-bold text-slate-700 mb-4 px-1">{t("home_gateways")} {firstName}?</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {HOME_GATEWAYS.map(({ id, label, desc, icon: Icon, color }) => (
+          {homeGateways.map(({ id, label, desc, icon: Icon, color }) => (
             <button key={id} onClick={() => onNavigate(id)}
               className="group relative text-left bg-white rounded-2xl border border-slate-100 p-6 flex items-center gap-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
               <div className="absolute inset-y-0 left-0 w-1.5 transition-all group-hover:w-2" style={{ backgroundColor: color }} />
@@ -584,7 +721,7 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
 
       {/* ── Closing line ── */}
       <p className="text-center text-xs text-slate-300 pt-2 pb-1">
-        Hecho para que tus reuniones fluyan · <span className="font-semibold text-slate-400">MeetBox</span>
+        {t("home_footer")} · <span className="font-semibold text-slate-400">MeetBox</span>
       </p>
     </div>
   );
@@ -750,8 +887,139 @@ function CalendarView() {
   );
 }
 
+// ── Desktop connection card ────────────────────────────────────────────────────
+function DesktopTokenCard() {
+  const { t } = useTranslation();
+  const [token,        setToken]        = React.useState<string | null>(null);
+  const [loading,      setLoading]      = React.useState(true);
+  const [regenerating, setRegenerating] = React.useState(false);
+  const [copied,       setCopied]       = React.useState(false);
+
+  React.useEffect(() => {
+    fetch("/api/auth/desktop/token")
+      .then((r) => r.ok ? r.json() : { token: null })
+      .then((d) => setToken(d.token ?? null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function regenerate() {
+    setRegenerating(true);
+    const res = await fetch("/api/auth/desktop/token", { method: "DELETE" });
+    const d   = await res.json();
+    setToken(d.token ?? null);
+    setRegenerating(false);
+  }
+
+  async function copyCode() {
+    if (!token) return;
+    await navigator.clipboard.writeText(token);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-[#050040]/15 overflow-hidden shadow-sm">
+      {/* Header */}
+      <div className="flex items-center gap-4 px-6 py-5 border-b border-slate-100">
+        <div className="w-12 h-12 rounded-2xl bg-[#050040] flex items-center justify-center shrink-0">
+          <Monitor className="w-6 h-6 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-slate-800">{t("desktop_integration")}</h3>
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#050040]/8 text-[#050040]">
+              {t("desktop_native_app")}
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">{t("desktop_desc")}</p>
+        </div>
+        <a
+          href="https://meetbox.io/desktop"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+        >
+          <Download className="w-3.5 h-3.5" />
+          {t("desktop_download")}
+        </a>
+      </div>
+
+      {/* Cuerpo */}
+      <div className="px-6 py-5 space-y-5">
+        {/* Instrucciones */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[
+            { n: "1", text: t("desktop_step1") },
+            { n: "2", text: t("desktop_step2") },
+            { n: "3", text: t("desktop_step3") },
+          ].map(({ n, text }) => (
+            <div key={n} className="flex items-start gap-3 bg-slate-50 rounded-xl px-4 py-3">
+              <span className="w-6 h-6 rounded-full bg-[#050040]/10 text-[#050040] text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                {n}
+              </span>
+              <p className="text-xs text-slate-500 leading-snug">{text}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Token */}
+        <div>
+          <p className="text-xs font-semibold text-slate-600 mb-2">{t("desktop_token_label")}</p>
+          {loading ? (
+            <div className="h-14 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center">
+              <RefreshCw className="w-4 h-4 text-slate-300 animate-spin" />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              {/* Código */}
+              <div className="flex-1 flex items-center gap-3 px-5 py-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <Monitor className="w-4 h-4 text-slate-300 shrink-0" />
+                <span className="font-mono text-lg font-bold tracking-widest text-[#050040] select-all flex-1">
+                  {token ?? "—"}
+                </span>
+              </div>
+
+              {/* Copiar */}
+              <button
+                onClick={copyCode}
+                disabled={!token}
+                title="Copiar código"
+                className={cn(
+                  "flex items-center gap-1.5 px-4 py-3.5 rounded-xl text-xs font-semibold border transition-all shrink-0",
+                  copied
+                    ? "bg-green-50 text-green-700 border-green-200"
+                    : "bg-[#050040] text-white border-[#050040] hover:bg-[#050040]/90 disabled:opacity-40",
+                )}
+              >
+                {copied
+                  ? <><Check className="w-4 h-4" />{t("desktop_copied")}</>
+                  : <><Copy className="w-4 h-4" />{t("desktop_copy")}</>
+                }
+              </button>
+
+              {/* Regenerar */}
+              <button
+                onClick={regenerate}
+                disabled={regenerating}
+                title="Generar nuevo código (invalida el anterior)"
+                className="p-3.5 rounded-xl border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-40 shrink-0"
+              >
+                <RefreshCw className={cn("w-4 h-4", regenerating && "animate-spin")} />
+              </button>
+            </div>
+          )}
+          <p className="text-[11px] text-slate-400 mt-2">
+            {t("desktop_regen_desc")}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Integrations view ─────────────────────────────────────────────────────────
 function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (p: Partial<Profile>) => void }) {
+  const { t } = useTranslation();
   const [connected, setConnected] = React.useState<string[]>(profile.integrations);
   const [saving, setSaving] = React.useState<string | null>(null);
   const [customInput, setCustomInput] = React.useState("");
@@ -800,78 +1068,107 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
   const connectedCount = connected.length + customList.length;
 
   return (
-    <div className="max-w-3xl space-y-6">
-      {/* Hero banner */}
-      <div className="relative bg-white rounded-2xl border border-slate-100 overflow-hidden px-6 py-5 flex items-center gap-6">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/undraw_programming_j1zw.svg" alt="" className="hidden sm:block w-28 h-auto shrink-0 object-contain" draggable={false} />
+    <div className="space-y-8">
+
+      {/* ── Page header ── */}
+      <div className="flex items-end justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-[#050040]">Integraciones</h2>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Conecta tus herramientas con MeetBox · <span className="font-medium text-slate-700">{connectedCount} conectada{connectedCount !== 1 ? "s" : ""}</span>
-          </p>
+          <h2 className="text-2xl font-bold text-[#050040]">{t("integrations_title")}</h2>
+          <p className="text-sm text-slate-500 mt-1">{t("integrations_desc")}</p>
         </div>
+        {connectedCount > 0 && (
+          <span className="flex items-center gap-1.5 text-xs font-semibold bg-[#050040]/8 text-[#050040] px-3 py-1.5 rounded-full">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            {connectedCount} {t("connected").toLowerCase()}
+          </span>
+        )}
       </div>
 
-      <div className="space-y-3">
-        {INTEGRATION_LIST.map(({ id, label, color, Icon, desc }) => {
-          const isConnected = connected.includes(id);
-          const isLoading   = saving === id;
-          return (
-            <div key={id} className={cn(
-              "bg-white rounded-2xl border p-4 sm:p-5 flex items-center gap-4 transition-all",
-              isConnected ? "border-[#050040]/20 shadow-sm" : "border-slate-100",
-            )}>
-              <div className="w-12 h-12 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center shrink-0">
-                <Icon style={{ color }} className="w-6 h-6" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-slate-800">{label}</p>
+      {/* ── MeetBox Desktop (featured) ── */}
+      <DesktopTokenCard />
+
+      {/* ── Integration grid ── */}
+      <div>
+        <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
+          {t("integrations_title")}
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {INTEGRATION_LIST.map(({ id, label, color, Icon, desc }) => {
+            const isConnected = connected.includes(id);
+            const isLoading   = saving === id;
+            return (
+              <div key={id} className={cn(
+                "group bg-white rounded-2xl border p-5 flex flex-col gap-4 transition-all hover:shadow-md",
+                isConnected ? "border-[#050040]/20 shadow-sm" : "border-slate-100",
+              )}>
+                {/* Card header */}
+                <div className="flex items-start justify-between">
+                  <div
+                    className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm"
+                    style={{ backgroundColor: color + "15", border: `1px solid ${color}25` }}
+                  >
+                    <Icon style={{ color }} className="w-6 h-6" />
+                  </div>
                   {isConnected && (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">
-                      <Check className="w-3 h-3" />Conectado
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-full shrink-0">
+                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                      {t("connected")}
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5 truncate">{desc}</p>
+                {/* Info */}
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-slate-800">{label}</p>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">{desc}</p>
+                </div>
+                {/* Action */}
+                <button
+                  onClick={() => toggle(id)}
+                  disabled={isLoading}
+                  className={cn(
+                    "w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all disabled:opacity-50",
+                    isConnected
+                      ? "bg-red-50 text-red-600 hover:bg-red-100 border border-red-100"
+                      : "bg-[#050040] text-white hover:bg-[#050040]/90",
+                  )}
+                >
+                  {isLoading ? "…" : isConnected
+                    ? <><Zap className="w-3.5 h-3.5" />{t("disconnect")}</>
+                    : <><Link2 className="w-3.5 h-3.5" />{t("connect")}</>
+                  }
+                </button>
               </div>
-              <button
-                onClick={() => toggle(id)}
-                disabled={isLoading}
-                className={cn(
-                  "shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50",
-                  isConnected
-                    ? "bg-red-50 text-red-600 hover:bg-red-100 border border-red-100"
-                    : "bg-[#050040] text-white hover:bg-[#050040]/90",
-                )}
-              >
-                {isLoading ? "…" : isConnected ? <><Zap className="w-3.5 h-3.5" />Desconectar</> : <><Link2 className="w-3.5 h-3.5" />Conectar</>}
-              </button>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
-      {/* Custom integrations */}
-      <div className="bg-white rounded-2xl border border-slate-100 p-5">
-        <h3 className="text-sm font-semibold text-slate-800 mb-1">Otras herramientas</h3>
-        <p className="text-xs text-slate-400 mb-4">Añade integraciones personalizadas que usa tu equipo</p>
-        <div className="flex gap-2 mb-3">
+      {/* ── Custom integrations ── */}
+      <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+            <Plug2 className="w-4 h-4 text-slate-500" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800">{t("other_tools")}</h3>
+            <p className="text-xs text-slate-400 mt-0.5">{t("other_tools_desc")}</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
           <input
             type="text"
             value={customInput}
             onChange={(e) => setCustomInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
-            placeholder="Nombre de la herramienta…"
+            placeholder={t("tool_placeholder")}
             className="flex-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm placeholder:text-slate-400 outline-none focus:border-[#050040]/40 transition"
           />
-          <button onClick={addCustom} className="px-3 py-2 bg-[#050040] text-white rounded-xl text-sm font-semibold hover:bg-[#050040]/90 transition">
+          <button onClick={addCustom} className="flex items-center gap-1.5 px-4 py-2 bg-[#050040] text-white rounded-xl text-sm font-semibold hover:bg-[#050040]/90 transition">
             <Plus className="w-4 h-4" />
           </button>
         </div>
         {customList.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 mt-3">
             {customList.map((tag) => (
               <span key={tag} className="inline-flex items-center gap-1.5 bg-[#050040]/8 text-[#050040] rounded-xl px-3 py-1.5 text-xs font-medium">
                 {tag}
@@ -889,12 +1186,25 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
 
 // ── Settings: Perfil ──────────────────────────────────────────────────────────
 function SettingsProfile({ user, profile, onUpdate }: { user: User; profile: Profile; onUpdate: (p: Partial<Profile>) => void }) {
+  const { t } = useTranslation();
   const [orgName,      setOrgName]      = React.useState(profile.orgName ?? "");
   const [teamSize,     setTeamSize]     = React.useState(profile.teamSize ?? "");
   const [meetingTypes, setMeetingTypes] = React.useState<string[]>(profile.meetingTypes);
   const [loading, setLoading] = React.useState(false);
   const [saved,   setSaved]   = React.useState(false);
   const [error,   setError]   = React.useState("");
+
+  const teamSizes = [
+    { id: "solo",  label: t("team_solo") },
+    { id: "2-10",  label: t("team_2_10") },
+    { id: "11-50", label: t("team_11_50") },
+    { id: "50+",   label: t("team_50p") },
+  ];
+  const meetingTypeOpts = [
+    { id: "presencial", label: t("meeting_presencial") },
+    { id: "virtual",    label: t("meeting_virtual") },
+    { id: "hibrida",    label: t("meeting_hibrida") },
+  ];
 
   function toggleMeeting(id: string) {
     setMeetingTypes((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
@@ -921,110 +1231,133 @@ function SettingsProfile({ user, profile, onUpdate }: { user: User; profile: Pro
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-2xl space-y-5">
-      <div>
-        <h2 className="text-2xl font-bold text-[#050040]">Perfil</h2>
-        <p className="text-sm text-slate-500 mt-1">Gestiona tu información personal y la de tu organización</p>
+    <form onSubmit={handleSubmit} className="space-y-6">
+
+      {/* ── Page header with avatar ── */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-[#050040] via-[#0c0c63] to-[#1a1a8c] rounded-2xl px-6 py-8 flex items-center gap-6">
+        <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/5" />
+        <div className="absolute -bottom-16 right-1/4 w-40 h-40 rounded-full bg-white/5" />
+        <div className="relative flex items-center gap-5">
+          <Avatar name={user.name} image={user.image} size="md" />
+          <div>
+            <h2 className="text-xl font-bold text-white leading-tight">{user.name}</h2>
+            <p className="text-sm text-white/60 mt-0.5">{user.email}</p>
+          </div>
+        </div>
+        <div className="relative ml-auto hidden sm:block">
+          <div className="text-right">
+            <p className="text-xs text-white/40 uppercase tracking-wide">{t("settings_profile_title")}</p>
+            <p className="text-xs text-white/60 mt-0.5">{t("settings_profile_desc")}</p>
+          </div>
+        </div>
       </div>
 
-      {/* Personal info */}
-      <SettingsCard title="Información personal" desc="Datos de tu cuenta de MeetBox">
-        <div className="flex items-center gap-4 mb-5 pb-5 border-b border-slate-100">
-          <Avatar name={user.name} image={user.image} />
-          <div>
-            <p className="text-sm font-semibold text-slate-800">{user.name}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
-          </div>
-        </div>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              <User className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />Nombre completo
-            </label>
-            <input
-              type="text"
-              value={user.name}
-              readOnly
-              className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-500 cursor-not-allowed"
-            />
-            <p className="text-xs text-slate-400 mt-1">El nombre se gestiona desde tu proveedor de inicio de sesión</p>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              <Mail className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />Correo electrónico
-            </label>
-            <input
-              type="email"
-              value={user.email}
-              readOnly
-              className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-500 cursor-not-allowed"
-            />
-          </div>
-        </div>
-      </SettingsCard>
+      {/* ── 2-column grid ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-      {/* Organisation */}
-      <SettingsCard title="Organización" desc="Configura el espacio de trabajo de tu equipo">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              <Building2 className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />Nombre de la organización
-            </label>
-            <input
-              type="text"
-              value={orgName}
-              onChange={(e) => setOrgName(e.target.value)}
-              placeholder="Ej. Acme Corp"
-              className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-[#050040]/50 focus:ring-2 focus:ring-[#050040]/8 transition"
-            />
+        {/* Left — Personal info */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-5">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-7 h-7 rounded-lg bg-[#050040]/8 flex items-center justify-center shrink-0">
+              <User className="w-3.5 h-3.5 text-[#050040]" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{t("personal_info")}</p>
+              <p className="text-xs text-slate-400">{t("personal_info_desc")}</p>
+            </div>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-2">
-              <Users className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />Tamaño del equipo
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {TEAM_SIZES.map(({ id, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setTeamSize(id)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
-                    teamSize === id
-                      ? "bg-[#050040] text-white border-[#050040]"
-                      : "bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
+          <div className="h-px bg-slate-100" />
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t("full_name")}</label>
+              <input
+                type="text" value={user.name} readOnly
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-500 cursor-not-allowed"
+              />
+              <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+                <Globe className="w-3 h-3 shrink-0" />{t("name_managed_by_provider")}
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t("email")}</label>
+              <input
+                type="email" value={user.email} readOnly
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-500 cursor-not-allowed"
+              />
             </div>
           </div>
         </div>
-      </SettingsCard>
 
-      {/* Meeting preferences */}
-      <SettingsCard title="Tipos de reunión" desc="¿Qué modalidades de reunión usa tu equipo?">
-        <div className="flex flex-wrap gap-2">
-          {MEETING_TYPE_OPTS.map(({ id, label }) => {
+        {/* Right — Organisation */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-5">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-7 h-7 rounded-lg bg-[#050040]/8 flex items-center justify-center shrink-0">
+              <Building2 className="w-3.5 h-3.5 text-[#050040]" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{t("organization")}</p>
+              <p className="text-xs text-slate-400">{t("organization_desc")}</p>
+            </div>
+          </div>
+          <div className="h-px bg-slate-100" />
+          <div className="space-y-5">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t("org_name")}</label>
+              <input
+                type="text" value={orgName} onChange={(e) => setOrgName(e.target.value)}
+                placeholder={t("org_name_placeholder")}
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-[#050040]/50 focus:ring-2 focus:ring-[#050040]/8 transition"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-2 flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5" />{t("team_size")}
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {teamSizes.map(({ id, label }) => (
+                  <button key={id} type="button" onClick={() => setTeamSize(id)}
+                    className={cn(
+                      "py-2 rounded-xl text-xs font-semibold border transition-all text-center",
+                      teamSize === id ? "bg-[#050040] text-white border-[#050040]" : "bg-slate-50 text-slate-600 border-slate-200 hover:border-[#050040]/30",
+                    )}
+                  >{label}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Meeting types — full width ── */}
+      <div className="bg-white rounded-2xl border border-slate-100 p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-7 h-7 rounded-lg bg-[#050040]/8 flex items-center justify-center shrink-0">
+            <Video className="w-3.5 h-3.5 text-[#050040]" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-800">{t("meeting_types")}</p>
+            <p className="text-xs text-slate-400">{t("meeting_types_desc")}</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {meetingTypeOpts.map(({ id, label }) => {
             const active = meetingTypes.includes(id);
+            const icons: Record<string, string> = { presencial: "🏢", virtual: "💻", hibrida: "🔀" };
             return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => toggleMeeting(id)}
+              <button key={id} type="button" onClick={() => toggleMeeting(id)}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border transition-all",
-                  active ? "bg-[#050040] text-white border-[#050040]" : "bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300",
+                  "flex items-center gap-3 p-4 rounded-xl border text-left transition-all",
+                  active ? "bg-[#050040] text-white border-[#050040] shadow-sm" : "bg-slate-50 text-slate-600 border-slate-200 hover:border-[#050040]/30",
                 )}
               >
-                {active && <Check className="w-3.5 h-3.5" />}
-                {label}
+                <span className="text-lg leading-none">{icons[id]}</span>
+                <span className="text-sm font-semibold">{label}</span>
+                {active && <Check className="w-4 h-4 ml-auto shrink-0" />}
               </button>
             );
           })}
         </div>
-      </SettingsCard>
+      </div>
 
       {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2.5">{error}</p>}
       <div className="flex justify-end"><SaveBtn loading={loading} saved={saved} /></div>
@@ -1054,44 +1387,79 @@ function SettingsNotifications() {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  const rows: { key: keyof typeof prefs; label: string; desc: string; icon: React.ElementType }[] = [
-    { key: "meetings",     label: "Recordatorios de reuniones",  desc: "15 minutos antes de cada reunión programada",    icon: Calendar  },
-    { key: "weekly",       label: "Resumen semanal por email",   desc: "Todos los lunes con el resumen de la semana",    icon: Mail      },
-    { key: "browser",      label: "Notificaciones del navegador",desc: "Alertas en tiempo real dentro del navegador",    icon: Globe     },
-    { key: "integrations", label: "Alertas de integración",      desc: "Cuando hay errores de sincronización",           icon: Plug2     },
-    { key: "transcripts",  label: "Nuevas transcripciones",      desc: "Cuando se termina de procesar una grabación",    icon: FileText  },
+  const { t } = useTranslation();
+  const rows: { key: keyof typeof prefs; label: string; desc: string; icon: React.ElementType; color: string }[] = [
+    { key: "meetings",     label: t("notif_meetings_label"),     desc: t("notif_meetings_desc"),     icon: Calendar,  color: "#050040" },
+    { key: "weekly",       label: t("notif_weekly_label"),       desc: t("notif_weekly_desc"),       icon: Mail,      color: "#7c3aed" },
+    { key: "browser",      label: t("notif_browser_label"),      desc: t("notif_browser_desc"),      icon: Globe,     color: "#0891b2" },
+    { key: "integrations", label: t("notif_integrations_label"), desc: t("notif_integrations_desc"), icon: Plug2,     color: "#d97706" },
+    { key: "transcripts",  label: t("notif_transcripts_label"),  desc: t("notif_transcripts_desc"),  icon: FileText,  color: "#059669" },
   ];
 
   return (
-    <div className="max-w-2xl space-y-5">
-      <div className="flex items-start justify-between">
+    <div className="space-y-6">
+
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-[#050040]">Notificaciones</h2>
-          <p className="text-sm text-slate-500 mt-1">Controla cómo y cuándo MeetBox te avisa</p>
+          <h2 className="text-2xl font-bold text-[#050040]">{t("settings_notif_title")}</h2>
+          <p className="text-sm text-slate-500 mt-1">{t("settings_notif_desc")}</p>
         </div>
         {saved && (
-          <span className="flex items-center gap-1 text-xs font-medium bg-green-50 text-green-700 border border-green-200 px-3 py-1.5 rounded-xl">
-            <CheckCircle2 className="w-3.5 h-3.5" />Guardado
+          <span className="flex items-center gap-1.5 text-xs font-semibold bg-green-50 text-green-700 border border-green-200 px-3 py-1.5 rounded-full">
+            <CheckCircle2 className="w-3.5 h-3.5" />{t("saved")}
           </span>
         )}
       </div>
 
-      <SettingsCard title="Preferencias de notificación">
-        <div className="space-y-4">
-          {rows.map(({ key, label, desc, icon: Icon }) => (
-            <div key={key} className="flex items-center gap-4">
-              <div className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
-                <Icon className="w-4 h-4 text-slate-400" />
+      {/* ── Cards grid ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        {rows.map(({ key, label, desc, icon: Icon, color }) => (
+          <div
+            key={key}
+            onClick={() => update(key, !prefs[key])}
+            className={cn(
+              "group cursor-pointer bg-white rounded-2xl border p-5 flex flex-col gap-4 transition-all hover:shadow-md select-none",
+              prefs[key] ? "border-slate-200 shadow-sm" : "border-slate-100",
+            )}
+          >
+            {/* Icon + Toggle */}
+            <div className="flex items-start justify-between">
+              <div
+                className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110"
+                style={{ backgroundColor: color + "15" }}
+              >
+                <Icon className="w-5 h-5" style={{ color }} />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-800">{label}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{desc}</p>
+              <div
+                className={cn(
+                  "relative w-10 h-5 rounded-full transition-colors shrink-0 mt-0.5",
+                  prefs[key] ? "bg-[#050040]" : "bg-slate-200",
+                )}
+                style={{ width: 40, height: 22 }}
+                onClick={(e) => { e.stopPropagation(); update(key, !prefs[key]); }}
+              >
+                <span className={cn(
+                  "absolute top-0.5 w-[18px] h-[18px] bg-white rounded-full shadow transition-transform duration-200",
+                  prefs[key] ? "translate-x-[20px]" : "translate-x-0.5",
+                )} />
               </div>
-              <Toggle enabled={prefs[key]} onChange={(v) => update(key, v)} />
             </div>
-          ))}
-        </div>
-      </SettingsCard>
+            {/* Text */}
+            <div>
+              <p className="text-sm font-semibold text-slate-800 leading-tight">{label}</p>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">{desc}</p>
+            </div>
+            {/* Status pill */}
+            <div className={cn(
+              "self-start text-[10px] font-semibold px-2.5 py-1 rounded-full transition-colors",
+              prefs[key] ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400",
+            )}>
+              {prefs[key] ? "Activo" : "Inactivo"}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1117,163 +1485,259 @@ function SettingsSecurity() {
     setCurrent(""); setNewPwd(""); setConfirm("");
   }
 
+  const { t } = useTranslation();
+
   return (
-    <div className="max-w-2xl space-y-5">
+    <div className="space-y-6">
+
+      {/* ── Header ── */}
       <div>
-        <h2 className="text-2xl font-bold text-[#050040]">Seguridad</h2>
-        <p className="text-sm text-slate-500 mt-1">Administra la seguridad de tu cuenta</p>
+        <h2 className="text-2xl font-bold text-[#050040]">{t("settings_security_title")}</h2>
+        <p className="text-sm text-slate-500 mt-1">{t("settings_security_desc")}</p>
       </div>
 
-      {/* Password change */}
-      <SettingsCard title="Cambiar contraseña" desc="Actualiza tu contraseña de acceso">
-        <form onSubmit={handleChange} className="space-y-3">
-          {[
-            { label: "Contraseña actual",     val: current,  set: setCurrent,  show: showCurrent, toggle: () => setShowCurrent((p) => !p) },
-            { label: "Nueva contraseña",      val: newPwd,   set: setNewPwd,   show: showNew,     toggle: () => setShowNew((p) => !p) },
-            { label: "Confirmar contraseña",  val: confirm,  set: setConfirm,  show: showNew,     toggle: () => setShowNew((p) => !p) },
-          ].map(({ label, val, set, show, toggle }) => (
-            <div key={label}>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">{label}</label>
-              <div className="relative">
-                <input
-                  type={show ? "text" : "password"}
-                  value={val}
-                  onChange={(e) => set(e.target.value)}
-                  className="w-full px-3 py-2.5 pr-10 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 outline-none focus:border-[#050040]/50 focus:ring-2 focus:ring-[#050040]/8 transition"
-                />
-                <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-                  {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+      {/* ── 2-column grid ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+
+        {/* Left — Change password */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6">
+          <div className="flex items-center gap-2 mb-5">
+            <div className="w-7 h-7 rounded-lg bg-[#050040]/8 flex items-center justify-center shrink-0">
+              <Shield className="w-3.5 h-3.5 text-[#050040]" />
             </div>
-          ))}
-          {msg && (
-            <p className={cn(
-              "text-xs rounded-xl px-3 py-2.5 border",
-              msg.type === "ok"
-                ? "bg-green-50 text-green-700 border-green-200"
-                : "bg-red-50 text-red-600 border-red-100",
-            )}>
-              {msg.text}
-            </p>
-          )}
-          <div className="flex justify-end pt-1">
-            <SaveBtn loading={loading} saved={msg?.type === "ok"} />
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{t("change_password")}</p>
+              <p className="text-xs text-slate-400">{t("change_password_desc")}</p>
+            </div>
           </div>
-        </form>
-      </SettingsCard>
-
-      {/* Connected accounts */}
-      <SettingsCard title="Métodos de inicio de sesión" desc="Cuentas vinculadas a tu perfil">
-        <div className="space-y-3">
-          {[
-            { label: "Google",              desc: "Inicio de sesión con Google OAuth", connected: true,  icon: "G", color: "#EA4335" },
-            { label: "Correo electrónico",  desc: "Inicio de sesión con email y OTP",  connected: true,  icon: "@", color: "#050040" },
-          ].map(({ label, desc, connected: c, icon, color }) => (
-            <div key={label} className="flex items-center gap-4 p-3.5 rounded-xl bg-slate-50 border border-slate-100">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0" style={{ backgroundColor: color }}>
-                {icon}
+          <form onSubmit={handleChange} className="space-y-3">
+            {([
+              { label: t("current_password"), val: current, set: setCurrent, show: showCurrent, toggle: () => setShowCurrent((p) => !p) },
+              { label: t("new_password"),      val: newPwd,  set: setNewPwd,  show: showNew,    toggle: () => setShowNew((p) => !p) },
+              { label: t("confirm_password"),  val: confirm, set: setConfirm, show: showNew,    toggle: () => setShowNew((p) => !p) },
+            ] as const).map(({ label, val, set, show, toggle }) => (
+              <div key={String(label)}>
+                <label className="block text-xs font-semibold text-slate-500 mb-1.5">{label}</label>
+                <div className="relative">
+                  <input
+                    type={show ? "text" : "password"}
+                    value={val}
+                    onChange={(e) => (set as React.Dispatch<React.SetStateAction<string>>)(e.target.value)}
+                    className="w-full px-3 py-2.5 pr-10 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 outline-none focus:border-[#050040]/50 focus:ring-2 focus:ring-[#050040]/8 transition"
+                  />
+                  <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+                    {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-800">{label}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{desc}</p>
-              </div>
-              {c && (
-                <span className="flex items-center gap-1 text-xs font-medium bg-green-50 text-green-700 border border-green-200 px-2 py-1 rounded-full shrink-0">
-                  <Check className="w-3 h-3" />Activo
-                </span>
-              )}
+            ))}
+            {msg && (
+              <p className={cn(
+                "text-xs rounded-xl px-3 py-2.5 border",
+                msg.type === "ok" ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-100",
+              )}>{msg.text}</p>
+            )}
+            <div className="flex justify-end pt-1">
+              <SaveBtn loading={loading} saved={msg?.type === "ok"} />
             </div>
-          ))}
+          </form>
         </div>
-      </SettingsCard>
 
-      {/* Sessions */}
-      <SettingsCard title="Sesiones activas" desc="Cierra sesión en todos los dispositivos">
-        <button
-          onClick={() => signOut({ callbackUrl: "/auth" })}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition-all"
-        >
-          <LogOut className="w-4 h-4" />
-          Cerrar sesión en todos los dispositivos
-        </button>
-      </SettingsCard>
+        {/* Right — Login methods + Sessions */}
+        <div className="space-y-4">
+
+          {/* Sign-in methods */}
+          <div className="bg-white rounded-2xl border border-slate-100 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 rounded-lg bg-[#050040]/8 flex items-center justify-center shrink-0">
+                <Link2 className="w-3.5 h-3.5 text-[#050040]" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">{t("login_methods")}</p>
+                <p className="text-xs text-slate-400">{t("login_methods_desc")}</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {[
+                { label: t("google_signin"), desc: t("google_desc"), icon: "G", color: "#EA4335" },
+                { label: t("email_signin"),  desc: t("email_desc"),  icon: "@", color: "#050040" },
+              ].map(({ label, desc, icon, color }) => (
+                <div key={String(label)} className="flex items-center gap-3 p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm" style={{ backgroundColor: color }}>
+                    {icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-800">{label}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{desc}</p>
+                  </div>
+                  <span className="flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full shrink-0">
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />{t("active_label")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Active sessions */}
+          <div className="bg-white rounded-2xl border border-slate-100 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+                <LogOut className="w-3.5 h-3.5 text-red-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">{t("active_sessions")}</p>
+                <p className="text-xs text-slate-400">{t("active_sessions_desc")}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => signOut({ callbackUrl: "/auth" })}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition-all"
+            >
+              <LogOut className="w-4 h-4" />{t("logout_all")}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 // ── Settings: Cuenta ──────────────────────────────────────────────────────────
 function SettingsAccount({ user }: { user: User }) {
+  const { t, locale, setLocale } = useTranslation();
   const [confirmDelete, setConfirmDelete] = React.useState("");
   const [showDialog,    setShowDialog]    = React.useState(false);
+  const [langSaved,     setLangSaved]     = React.useState(false);
+
+  function handleLocale(l: Locale) {
+    setLocale(l);
+    setLangSaved(true);
+    setTimeout(() => setLangSaved(false), 2000);
+  }
 
   return (
-    <div className="max-w-2xl space-y-5">
-      <div className="relative bg-white rounded-2xl border border-slate-100 overflow-hidden px-6 py-5 flex items-center gap-5">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/undraw_budgeting_klon.svg" alt="" className="hidden sm:block w-24 h-auto shrink-0 object-contain" draggable={false} />
-        <div>
-          <h2 className="text-2xl font-bold text-[#050040]">Cuenta</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Gestiona tu plan y datos de cuenta</p>
+    <div className="space-y-6">
+
+      {/* ── Header ── */}
+      <div>
+        <h2 className="text-2xl font-bold text-[#050040]">{t("settings_account_title")}</h2>
+        <p className="text-sm text-slate-500 mt-1">{t("settings_account_desc")}</p>
+      </div>
+
+      {/* ── Row 1: Plan + Language ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+
+        {/* Plan — 2/3 width */}
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 p-6">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-[#050040] flex items-center justify-center shrink-0">
+                <Zap className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">{t("current_plan")}</p>
+                <p className="text-xs text-slate-400">{t("current_plan_desc")}</p>
+              </div>
+            </div>
+            <button className="px-4 py-2 bg-[#050040] text-white rounded-xl text-xs font-semibold hover:bg-[#050040]/90 transition shadow-sm">
+              {t("upgrade")}
+            </button>
+          </div>
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-[#050040]/5 border border-[#050040]/10 mb-4">
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-[#050040]">Plan Free</p>
+              <p className="text-xs text-slate-500 mt-0.5">{t("plan_free_desc")}</p>
+            </div>
+            <span className="text-[10px] font-bold bg-[#050040] text-white px-2.5 py-1 rounded-full uppercase tracking-wide">Free</span>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: t("plan_meetings"),     value: "3 / 5",   pct: 60  },
+              { label: t("plan_integrations"), value: "1 / 1",   pct: 100 },
+              { label: t("plan_storage"),      value: "120 MB",  pct: 24  },
+            ].map(({ label, value, pct }) => (
+              <div key={label} className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">{label}</p>
+                <p className="text-base font-bold text-slate-800 mt-1 mb-2">{value}</p>
+                <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div className={cn("h-full rounded-full transition-all", pct >= 100 ? "bg-red-400" : "bg-[#050040]")} style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Language — 1/3 width */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-[#050040]/8 flex items-center justify-center shrink-0">
+              <Globe className="w-4 h-4 text-[#050040]" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{t("language")}</p>
+              <p className="text-xs text-slate-400">{t("language_desc")}</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {(["es", "en"] as Locale[]).map((l) => (
+              <button key={l} onClick={() => handleLocale(l)}
+                className={cn(
+                  "w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-semibold transition-all",
+                  locale === l ? "bg-[#050040] text-white border-[#050040] shadow-sm" : "bg-slate-50 text-slate-600 border-slate-200 hover:border-[#050040]/30",
+                )}
+              >
+                <span className="text-lg leading-none">{l === "es" ? "🇪🇸" : "🇺🇸"}</span>
+                <span className="flex-1 text-left">{t(l === "es" ? "language_es" : "language_en")}</span>
+                {locale === l && <Check className="w-4 h-4 shrink-0" />}
+              </button>
+            ))}
+          </div>
+          {langSaved && (
+            <span className="flex items-center gap-1.5 text-xs font-semibold bg-green-50 text-green-700 border border-green-200 px-3 py-2 rounded-xl justify-center">
+              <CheckCircle2 className="w-3.5 h-3.5" />{t("language_saved")}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Plan */}
-      <SettingsCard title="Plan actual" desc="Tu suscripción activa en MeetBox">
-        <div className="flex items-center gap-4 p-4 rounded-xl bg-[#050040]/4 border border-[#050040]/10">
-          <div className="w-10 h-10 rounded-xl bg-[#050040] flex items-center justify-center shrink-0">
-            <Zap className="w-5 h-5 text-white" />
+      {/* ── Row 2: Data + Danger zone ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Export data */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+              <FileText className="w-4 h-4 text-slate-500" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{t("your_data")}</p>
+              <p className="text-xs text-slate-400">{t("your_data_desc")}</p>
+            </div>
           </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-[#050040]">Plan Free</p>
-            <p className="text-xs text-slate-500 mt-0.5">Hasta 5 reuniones/mes · 1 integración · Transcripción básica</p>
+          <button className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:border-[#050040]/30 hover:text-[#050040] transition-all">
+            <FileText className="w-4 h-4" />{t("export_data")}
+          </button>
+          <p className="text-xs text-slate-400 mt-2 text-center">{t("export_desc")}</p>
+        </div>
+
+        {/* Danger zone */}
+        <div className="bg-white rounded-2xl border border-red-100 p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-red-700">{t("danger_zone")}</p>
+              <p className="text-xs text-slate-400">{t("danger_zone_desc")}</p>
+            </div>
           </div>
-          <button className="shrink-0 px-4 py-2 bg-[#050040] text-white rounded-xl text-xs font-semibold hover:bg-[#050040]/90 transition">
-            Mejorar plan
+          <button
+            onClick={() => setShowDialog(true)}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm font-semibold text-red-600 hover:bg-red-100 transition-all"
+          >
+            <Trash2 className="w-4 h-4" />{t("delete_account")}
           </button>
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-3">
-          {[
-            { label: "Reuniones",    value: "3 / 5",   pct: 60 },
-            { label: "Integraciones",value: "1 / 1",   pct: 100 },
-            { label: "Almacenamiento",value: "120 MB", pct: 24 },
-          ].map(({ label, value, pct }) => (
-            <div key={label} className="bg-white rounded-xl border border-slate-100 p-3">
-              <p className="text-xs text-slate-500 mb-1">{label}</p>
-              <p className="text-sm font-semibold text-slate-800 mb-2">{value}</p>
-              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div className={cn("h-full rounded-full", pct >= 100 ? "bg-red-400" : "bg-[#050040]")} style={{ width: `${pct}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </SettingsCard>
-
-      {/* Export data */}
-      <SettingsCard title="Tus datos" desc="Descarga o exporta tu información">
-        <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:border-[#050040]/30 hover:text-[#050040] transition-all">
-          <FileText className="w-4 h-4" />
-          Exportar todos mis datos
-        </button>
-        <p className="text-xs text-slate-400 mt-2">Se generará un archivo ZIP con tus reuniones, transcripciones y configuración</p>
-      </SettingsCard>
-
-      {/* Danger zone */}
-      <div className="bg-white rounded-2xl border border-red-100 p-5 sm:p-6">
-        <div className="flex items-start gap-3 mb-4">
-          <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-          <div>
-            <h3 className="text-sm font-semibold text-red-700">Zona de peligro</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Estas acciones son irreversibles</p>
-          </div>
-        </div>
-        <button
-          onClick={() => setShowDialog(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-50 border border-red-200 text-sm font-semibold text-red-600 hover:bg-red-100 transition-all"
-        >
-          <Trash2 className="w-4 h-4" />
-          Eliminar mi cuenta
-        </button>
       </div>
 
       {/* Delete dialog */}
@@ -1286,32 +1750,33 @@ function SettingsAccount({ user }: { user: User }) {
                 <Trash2 className="w-5 h-5 text-red-500" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-slate-800">¿Eliminar cuenta?</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Esta acción no se puede deshacer</p>
+                <h3 className="text-sm font-semibold text-slate-800">
+                  {locale === "en" ? "Delete account?" : "¿Eliminar cuenta?"}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {locale === "en" ? "This action cannot be undone" : "Esta acción no se puede deshacer"}
+                </p>
               </div>
             </div>
             <p className="text-xs text-slate-500 mb-4">
-              Escribe <span className="font-semibold text-slate-700">{user.email}</span> para confirmar.
+              {locale === "en" ? "Type" : "Escribe"}{" "}
+              <span className="font-semibold text-slate-700">{user.email}</span>{" "}
+              {locale === "en" ? "to confirm." : "para confirmar."}
             </p>
             <input
-              type="text"
-              value={confirmDelete}
+              type="text" value={confirmDelete}
               onChange={(e) => setConfirmDelete(e.target.value)}
               placeholder={user.email}
               className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm outline-none focus:border-red-300 transition mb-4"
             />
             <div className="flex gap-2">
-              <button
-                onClick={() => setShowDialog(false)}
-                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition"
-              >
-                Cancelar
+              <button onClick={() => setShowDialog(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
+                {t("cancel")}
               </button>
-              <button
-                disabled={confirmDelete !== user.email}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold disabled:opacity-40 hover:bg-red-600 transition"
-              >
-                Eliminar
+              <button disabled={confirmDelete !== user.email}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold disabled:opacity-40 hover:bg-red-600 transition">
+                {t("delete")}
               </button>
             </div>
           </div>
@@ -1354,6 +1819,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
       case "home":                    return <HomeView user={user} onNavigate={setActiveNav} />;
       case "meetcalendar":            return <MeetCalendarView />;
       case "meetbook":                return <MeetBookView />;
+      case "meetaction":              return <MeetActionView />;
       case "integrations":            return <IntegrationsView profile={profile} onUpdate={handleProfileUpdate} />;
       case "settings-profile":        return <SettingsProfile user={user} profile={profile} onUpdate={handleProfileUpdate} />;
       case "settings-notifications":  return <SettingsNotifications />;
@@ -1362,6 +1828,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
       case "meetings":                return <MeetingsView />;
       case "rooms":                   return <RoomsView />;
       case "rooms-meetings":          return <RoomsView />;
+      case "meety":                   return <MeetyView userName={user.name.split(" ")[0]} userImage={user.image} />;
       default:                        return <HomeView user={user} onNavigate={setActiveNav} />;
     }
   }
@@ -1370,7 +1837,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* Desktop sidebar */}
       <div className="hidden lg:flex w-72 shrink-0 flex-col border-r border-slate-100">
-        <SidebarContent user={user} profile={profile} activeNav={activeNav} setActiveNav={setActiveNav} />
+        <SidebarContent user={user} profile={profile} activeNav={activeNav} setActiveNav={setActiveNav} onMeetyOpen={() => setActiveNav("meety")} />
       </div>
 
       {/* Mobile sidebar overlay */}
@@ -1378,7 +1845,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
         <div className="fixed inset-0 z-50 lg:hidden flex">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
           <div className="relative w-72 max-w-[85vw] shadow-2xl">
-            <SidebarContent user={user} profile={profile} activeNav={activeNav} setActiveNav={setActiveNav} onClose={() => setSidebarOpen(false)} />
+            <SidebarContent user={user} profile={profile} activeNav={activeNav} setActiveNav={setActiveNav} onClose={() => setSidebarOpen(false)} onMeetyOpen={() => setActiveNav("meety")} />
           </div>
         </div>
       )}
@@ -1388,7 +1855,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
         <Header activeNav={activeNav} user={user} onMenuClick={() => setSidebarOpen(true)} setActiveNav={setActiveNav} />
         <main className={cn(
           "flex-1 min-h-0",
-          (activeNav === "meetbook" || activeNav === "meetcalendar")
+          (activeNav === "meetbook" || activeNav === "meetcalendar" || activeNav === "meety" || activeNav === "meetaction")
             ? "overflow-hidden"
             : "overflow-y-auto p-4 sm:p-6",
         )}>
@@ -1402,6 +1869,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
         userEmail={user.email}
         activeNav={activeNav}
       />
+
     </div>
   );
 }

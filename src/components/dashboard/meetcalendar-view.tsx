@@ -1,16 +1,31 @@
 "use client";
+/**
+ * MeetCalendarView — full calendar component with month/week/day views.
+ *
+ * Supports:
+ *   - Three views: month (grid), week (hourly column), day (hourly single)
+ *   - Event types: meeting, event, reminder — each with its own color and icon
+ *   - Recurrence: daily and weekly patterns with optional end date
+ *   - Google Calendar push via the events API (when user has linked their account)
+ *   - Keyboard navigation: arrow keys move the current date; Escape closes modals
+ *
+ * Recurring events are expanded server-side and returned as virtual instances
+ * that share the original event's id but have shifted start_at/end_at.
+ */
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import {
   ChevronLeft, ChevronRight, Plus, X, Clock, MapPin, Bell,
   Trash2, Video, CalendarDays, AlignLeft, Check, RefreshCw,
   GripVertical, Share2, Copy, Link2, ExternalLink,
+  ArrowLeft, ArrowRight, Sparkles, Pencil, Repeat,
 } from "lucide-react";
 import { SiGooglecalendar, SiApple } from "react-icons/si";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type EventType = "meeting" | "event" | "reminder";
 type CalView   = "month" | "week" | "day";
+type RecurrenceFreq = "none" | "daily" | "weekly";
 
 interface CalEvent {
   id:             string;
@@ -25,6 +40,10 @@ interface CalEvent {
   notify_email:   boolean;
   notify_minutes: number;
   google_event_id?: string | null;
+  // Recurrence (also present on instances returned by the API)
+  recurrence_freq?:  RecurrenceFreq | null;
+  recurrence_days?:  number[] | null;
+  recurrence_until?: string  | null;
 }
 
 interface EventFormData {
@@ -41,9 +60,15 @@ interface EventFormData {
   notify:         boolean;
   notify_minutes: number;
   notify_email:   boolean;
+  // Recurrence
+  recurrence_freq:  RecurrenceFreq;
+  recurrence_days:  number[];     // 0=Mon … 6=Sun, only used when freq === "weekly"
+  recurrence_until: string;       // "" = never, else "YYYY-MM-DD"
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
+// Week starts on Monday (ISO 8601) — JS getDay() returns 0=Sun, so we remap
+// with (day + 6) % 7 everywhere to get 0=Mon … 6=Sun.
 const MONTHS_ES = [
   "Enero","Febrero","Marzo","Abril","Mayo","Junio",
   "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre",
@@ -100,6 +125,11 @@ function fmtTime(iso: string): string {
 function fmtDateLong(d: Date): string {
   return `${DAYS_LONG[(d.getDay() + 6) % 7]}, ${d.getDate()} de ${MONTHS_ES[d.getMonth()]} ${d.getFullYear()}`;
 }
+/**
+ * Compute the API query range for the current view.
+ * Month view fetches one extra month on each side so events near the grid
+ * edges (days from adjacent months) are also included.
+ */
 function getViewRange(view: CalView, date: Date): { start: string; end: string } {
   if (view === "month") {
     const y = date.getFullYear(), m = date.getMonth();
@@ -132,6 +162,7 @@ function formDefaults(type: EventType, dateOrTime?: Date): EventFormData {
     location: "", description: "",
     color: TYPE_META[type].color,
     notify: false, notify_minutes: 15, notify_email: false,
+    recurrence_freq: "none", recurrence_days: [], recurrence_until: "",
   };
 }
 function eventToForm(ev: CalEvent): EventFormData {
@@ -151,8 +182,16 @@ function eventToForm(ev: CalEvent): EventFormData {
     notify:         ev.notify_email || ev.notify_minutes !== 15,
     notify_minutes: ev.notify_minutes,
     notify_email:   ev.notify_email,
+    recurrence_freq:  ev.recurrence_freq ?? "none",
+    recurrence_days:  ev.recurrence_days ?? [],
+    recurrence_until: ev.recurrence_until ? ev.recurrence_until.split("T")[0] : "",
   };
 }
+/**
+ * Return the local UTC offset as a string like "+05:30" or "-03:00".
+ * Used to build ISO 8601 timestamps that carry the user's timezone so the
+ * server stores the event in the right local time.
+ */
 function localOffsetStr(): string {
   const off  = -new Date().getTimezoneOffset();
   const sign = off >= 0 ? "+" : "-";
@@ -169,6 +208,16 @@ function formToPayload(f: EventFormData): Omit<CalEvent, "id" | "google_event_id
     : f.end_date && f.end_time
       ? `${f.end_date}T${f.end_time}:00${tz}`
       : null;
+
+  // Normalize recurrence — only persist what's meaningful
+  const isRec     = f.recurrence_freq !== "none";
+  const recDays   = f.recurrence_freq === "weekly" && f.recurrence_days.length > 0
+                      ? [...f.recurrence_days].sort((a, b) => a - b)
+                      : null;
+  const recUntil  = isRec && f.recurrence_until
+                      ? `${f.recurrence_until}T23:59:59${tz}`
+                      : null;
+
   return {
     title:          f.title.trim() || "Sin título",
     description:    f.description || null,
@@ -180,6 +229,9 @@ function formToPayload(f: EventFormData): Omit<CalEvent, "id" | "google_event_id
     color:          f.color,
     notify_email:   f.notify ? f.notify_email : false,
     notify_minutes: f.notify_minutes,
+    recurrence_freq:  isRec ? f.recurrence_freq : null,
+    recurrence_days:  recDays,
+    recurrence_until: recUntil,
   };
 }
 
@@ -191,15 +243,63 @@ interface ModalProps {
   onDelete: () => Promise<void>;
   onClose:  () => void;
 }
+// ── Quick time presets ───────────────────────────────────────────────────────
+const QUICK_PRESETS: { label: string; getStart: () => Date }[] = [
+  { label: "Ahora",          getStart: () => { const d = new Date(); d.setMinutes(Math.round(d.getMinutes()/15)*15, 0, 0); return d; } },
+  { label: "En 30 min",      getStart: () => { const d = new Date(Date.now() + 30 * 60000); d.setMinutes(Math.round(d.getMinutes()/15)*15, 0, 0); return d; } },
+  { label: "En 1 hora",      getStart: () => { const d = new Date(Date.now() + 60 * 60000); d.setMinutes(Math.round(d.getMinutes()/15)*15, 0, 0); return d; } },
+  { label: "Mañana 9:00",    getStart: () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d; } },
+  { label: "Esta tarde 15:00", getStart: () => { const d = new Date(); d.setHours(15, 0, 0, 0); return d; } },
+];
+
+const TYPE_HINTS: Record<EventType, string> = {
+  meeting:  "Con personas, llamadas o videollamadas",
+  event:    "Una actividad o cita",
+  reminder: "Un aviso o tarea simple",
+};
+
+const TYPE_PLACEHOLDERS: Record<EventType, string> = {
+  meeting:  "Ej. Sync con producto",
+  event:    "Ej. Demo trimestral",
+  reminder: "Ej. Llamar al equipo legal",
+};
+
 function EventModal({ editing, defaults, onSave, onDelete, onClose }: ModalProps) {
-  const [form, setForm] = React.useState<EventFormData>(() =>
-    editing ? eventToForm(editing) : defaults,
-  );
-  const [saving,  setSaving]  = React.useState(false);
+  const [form, setForm]         = React.useState<EventFormData>(() => editing ? eventToForm(editing) : defaults);
+  const [step, setStep]         = React.useState(0);
+  const [direction, setDirection] = React.useState<"fwd" | "back">("fwd");
+  const [saving,   setSaving]   = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
 
   function set<K extends keyof EventFormData>(key: K, value: EventFormData[K]) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  function applyPreset(getStart: () => Date) {
+    const s = getStart();
+    const e = new Date(s.getTime() + 60 * 60000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    setForm((f) => ({
+      ...f,
+      all_day:    false,
+      start_date: `${s.getFullYear()}-${pad(s.getMonth()+1)}-${pad(s.getDate())}`,
+      start_time: `${pad(s.getHours())}:${pad(s.getMinutes())}`,
+      end_date:   `${e.getFullYear()}-${pad(e.getMonth()+1)}-${pad(e.getDate())}`,
+      end_time:   `${pad(e.getHours())}:${pad(e.getMinutes())}`,
+    }));
+  }
+
+  function goto(s: number) {
+    setDirection(s > step ? "fwd" : "back");
+    setStep(s);
+  }
+  function next() {
+    if (step >= 2) return;
+    setDirection("fwd"); setStep(step + 1);
+  }
+  function back() {
+    if (step <= 0) return;
+    setDirection("back"); setStep(step - 1);
   }
 
   async function handleSave() {
@@ -213,323 +313,458 @@ function EventModal({ editing, defaults, onSave, onDelete, onClose }: ModalProps
     setDeleting(false);
   }
 
-  const TypeIcon = TYPE_META[form.type].icon;
+  // Enter key handling
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Enter" && (e.target as HTMLElement)?.tagName !== "TEXTAREA") {
+        if (step === 0 && form.title.trim()) { e.preventDefault(); next(); }
+        else if (step === 1) { e.preventDefault(); next(); }
+      }
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step, form.title]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const TypeIcon  = TYPE_META[form.type].icon;
+  const canNext0  = form.title.trim().length > 0;
+  const slideAnim = direction === "fwd" ? "evSlideFwd" : "evSlideBack";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" style={{ animation: "mcalOverlay 0.18s ease both" }} onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden" style={{ animation: "mcalModal 0.22s cubic-bezier(0.16,1,0.3,1) both" }}>
+      <style>{`
+        @keyframes evSlideFwd  { from { opacity: 0; transform: translateX(24px) } to { opacity: 1; transform: translateX(0) } }
+        @keyframes evSlideBack { from { opacity: 0; transform: translateX(-24px) } to { opacity: 1; transform: translateX(0) } }
+        @keyframes evPop       { from { opacity: 0; transform: scale(0.9) } to { opacity: 1; transform: scale(1) } }
+      `}</style>
+
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        style={{ animation: "mcalOverlay 0.18s ease both" }} onClick={onClose} />
+
+      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden"
+        style={{ animation: "mcalModal 0.22s cubic-bezier(0.16,1,0.3,1) both" }}>
+
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-              style={{ backgroundColor: form.color + "22" }}>
-              <TypeIcon style={{ color: form.color }} className="w-4 h-4" />
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 transition-colors"
+              style={{ backgroundColor: form.color + "1F" }}>
+              <TypeIcon style={{ color: form.color }} className="w-5 h-5" />
             </div>
-            <h2 className="text-base font-semibold text-slate-800">
-              {editing ? "Editar" : "Nuevo"} {TYPE_META[form.type].label.toLowerCase()}
-            </h2>
+            <div className="min-w-0">
+              <h2 className="text-base font-bold text-slate-800 leading-tight truncate">
+                {editing ? "Editar" : "Nuevo"} {TYPE_META[form.type].label.toLowerCase()}
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">Paso {step + 1} de 3</p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors shrink-0">
             <X className="w-4 h-4 text-slate-500" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          {/* Type selector */}
-          <div className="flex gap-2">
-            {(["meeting","event","reminder"] as EventType[]).map((t) => {
-              const m = TYPE_META[t];
-              const active = form.type === t;
-              return (
-                <button
-                  key={t}
-                  onClick={() => { set("type", t); if (!editing) set("color", m.color); }}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all",
-                    active ? "text-white border-transparent" : "bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300",
-                  )}
-                  style={active ? { backgroundColor: m.color } : {}}
-                >
-                  <m.icon className="w-3.5 h-3.5" />{m.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Title */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Título</label>
-            <input
-              autoFocus
-              type="text"
-              value={form.title}
-              onChange={(e) => set("title", e.target.value)}
-              placeholder={`Nombre del ${TYPE_META[form.type].label.toLowerCase()}`}
-              className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-[#050040]/50 focus:ring-2 focus:ring-[#050040]/8 transition"
-            />
-          </div>
-
-          {/* All-day toggle */}
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-600">Todo el día</span>
-            <button
-              onClick={() => set("all_day", !form.all_day)}
+        {/* Progress dots */}
+        <div className="px-6 pt-3 pb-1 flex items-center gap-1.5">
+          {[0, 1, 2].map((i) => (
+            <button key={i}
+              onClick={() => goto(i)}
+              disabled={i > 0 && !canNext0}
+              aria-label={`Paso ${i + 1}`}
               className={cn(
-                "relative rounded-full transition-colors shrink-0",
-                form.all_day ? "bg-[#050040]" : "bg-slate-200",
+                "h-1.5 rounded-full transition-all duration-300 disabled:opacity-40",
+                i === step ? "flex-1" : i < step ? "flex-1 opacity-50" : "w-8",
               )}
-              style={{ width: 40, height: 22 }}
-            >
-              <span className={cn(
-                "absolute top-0.5 w-[18px] h-[18px] bg-white rounded-full shadow transition-transform duration-200",
-                form.all_day ? "translate-x-[20px]" : "translate-x-0.5",
-              )} />
-            </button>
-          </div>
+              style={i <= step ? { backgroundColor: form.color } : { backgroundColor: "#e2e8f0" }} />
+          ))}
+        </div>
 
-          {/* Dates / Times */}
-          {form.all_day ? (
-            <div className="grid grid-cols-2 gap-3">
-              {[{ label: "Inicio", key: "start_date" as const }, { label: "Fin", key: "end_date" as const }].map(({ label, key }) => (
-                <div key={key}>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">{label}</label>
-                  <input type="date" value={form[key]}
-                    onChange={(e) => set(key, e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 outline-none focus:border-[#050040]/50 transition" />
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div key={`step-${step}`} style={{ animation: `${slideAnim} 0.28s cubic-bezier(0.16,1,0.3,1) both` }}>
+
+            {/* ── Step 1 — What? ── */}
+            {step === 0 && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-slate-800 leading-tight">¿Qué quieres crear?</h3>
+                  <p className="text-sm text-slate-500 mt-1">Elige el tipo y dale un nombre.</p>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Inicio</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <input type="date" value={form.start_date} onChange={(e) => set("start_date", e.target.value)}
-                    className="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 outline-none focus:border-[#050040]/50 transition" />
-                  <input type="time" value={form.start_time} onChange={(e) => set("start_time", e.target.value)}
-                    className="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 outline-none focus:border-[#050040]/50 transition" />
+
+                {/* Type cards */}
+                <div className="grid grid-cols-3 gap-2.5">
+                  {(["meeting","event","reminder"] as EventType[]).map((t) => {
+                    const m = TYPE_META[t];
+                    const active = form.type === t;
+                    return (
+                      <button key={t}
+                        onClick={() => { set("type", t); if (!editing) set("color", m.color); }}
+                        className={cn(
+                          "p-3 rounded-2xl border-2 text-left transition-all duration-200",
+                          active
+                            ? "shadow-sm scale-[1.02]"
+                            : "border-slate-200 bg-white hover:border-slate-300 hover:-translate-y-0.5",
+                        )}
+                        style={active ? { backgroundColor: m.color + "10", borderColor: m.color } : {}}
+                      >
+                        <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-2 transition-colors"
+                          style={{ backgroundColor: active ? m.color : m.color + "15" }}>
+                          <m.icon className="w-4 h-4" style={{ color: active ? "#fff" : m.color }} />
+                        </div>
+                        <p className="text-sm font-bold text-slate-800 leading-tight">{m.label}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{TYPE_HINTS[t].split(",")[0]}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Title input */}
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                    <Pencil className="w-3 h-3" />Nombre
+                  </label>
+                  <input
+                    autoFocus type="text" value={form.title}
+                    onChange={(e) => set("title", e.target.value)}
+                    placeholder={TYPE_PLACEHOLDERS[form.type]}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border-2 border-slate-200 text-base text-slate-800 placeholder:text-slate-400 outline-none focus:bg-white transition-all"
+                    style={form.title ? { borderColor: form.color + "60" } : {}} />
+                  <p className="text-xs text-slate-400 mt-1.5">{TYPE_HINTS[form.type]}</p>
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Fin</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <input type="date" value={form.end_date} onChange={(e) => set("end_date", e.target.value)}
-                    className="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 outline-none focus:border-[#050040]/50 transition" />
-                  <input type="time" value={form.end_time} onChange={(e) => set("end_time", e.target.value)}
-                    className="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 outline-none focus:border-[#050040]/50 transition" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Location */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              <MapPin className="w-3.5 h-3.5 inline mr-1 text-slate-400" />Ubicación (opcional)
-            </label>
-            <input type="text" value={form.location} onChange={(e) => set("location", e.target.value)}
-              placeholder="Sala, URL o lugar"
-              className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-[#050040]/50 transition" />
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              <AlignLeft className="w-3.5 h-3.5 inline mr-1 text-slate-400" />Descripción (opcional)
-            </label>
-            <textarea value={form.description} onChange={(e) => set("description", e.target.value)}
-              placeholder="Agrega una nota o descripción..."
-              rows={3}
-              className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-[#050040]/50 transition resize-none" />
-          </div>
-
-          {/* Color picker */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-2">Color</label>
-            <div className="flex gap-2 flex-wrap">
-              {EVENT_COLORS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => set("color", c)}
-                  className="w-7 h-7 rounded-full transition-transform hover:scale-110 border-2"
-                  style={{ backgroundColor: c, borderColor: form.color === c ? "#000" : "transparent" }}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Notifications */}
-          <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                <Bell className="w-3.5 h-3.5 text-slate-400" />Recordatorio
-              </span>
-              <button
-                onClick={() => set("notify", !form.notify)}
-                className={cn("relative rounded-full transition-colors shrink-0", form.notify ? "bg-[#050040]" : "bg-slate-200")}
-                style={{ width: 36, height: 20 }}
-              >
-                <span className={cn(
-                  "absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200",
-                  form.notify ? "translate-x-[18px]" : "translate-x-0.5",
-                )} />
-              </button>
-            </div>
-            {form.notify && (
-              <>
-                <div className="flex flex-wrap gap-1.5">
-                  {NOTIFY_OPTS.map(({ value, label }) => (
-                    <button
-                      key={value}
-                      onClick={() => set("notify_minutes", value)}
-                      className={cn(
-                        "px-2.5 py-1 rounded-lg text-xs font-medium border transition-all",
-                        form.notify_minutes === value
-                          ? "bg-[#050040] text-white border-[#050040]"
-                          : "bg-white text-slate-600 border-slate-200 hover:border-slate-300",
-                      )}
-                    >{label}</button>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-600">Enviar por email</span>
-                  <button
-                    onClick={() => set("notify_email", !form.notify_email)}
-                    className={cn("relative rounded-full transition-colors shrink-0", form.notify_email ? "bg-[#050040]" : "bg-slate-200")}
-                    style={{ width: 36, height: 20 }}
-                  >
-                    <span className={cn(
-                      "absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200",
-                      form.notify_email ? "translate-x-[18px]" : "translate-x-0.5",
-                    )} />
-                  </button>
-                </div>
-              </>
             )}
+
+            {/* ── Step 2 — When? ── */}
+            {step === 1 && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-slate-800 leading-tight">¿Cuándo es?</h3>
+                  <p className="text-sm text-slate-500 mt-1">Fecha y hora. Usa los atajos para ir más rápido.</p>
+                </div>
+
+                {/* All-day pill */}
+                <button onClick={() => set("all_day", !form.all_day)}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-sm font-medium transition-all",
+                    form.all_day
+                      ? "text-white border-transparent"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-300",
+                  )}
+                  style={form.all_day ? { backgroundColor: form.color, borderColor: form.color } : {}}>
+                  <div className={cn(
+                    "w-4 h-4 rounded border-2 flex items-center justify-center transition-all",
+                    form.all_day ? "bg-white border-white" : "border-slate-300",
+                  )}>
+                    {form.all_day && <Check className="w-3 h-3" style={{ color: form.color }} />}
+                  </div>
+                  Todo el día
+                </button>
+
+                {/* Quick presets — only when not all-day */}
+                {!form.all_day && (
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                      <Sparkles className="w-3 h-3" />Atajos
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {QUICK_PRESETS.map(({ label, getStart }) => (
+                        <button key={label} onClick={() => applyPreset(getStart)}
+                          className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-50 text-slate-600 border border-slate-200 hover:bg-white hover:border-slate-300 hover:-translate-y-0.5 transition-all">
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Date / Time */}
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Inicio</label>
+                    <div className={cn("grid gap-2", form.all_day ? "grid-cols-1" : "grid-cols-[1fr_auto]")}>
+                      <input type="date" value={form.start_date} onChange={(e) => set("start_date", e.target.value)}
+                        className="px-3 py-2.5 rounded-xl bg-slate-50 border-2 border-slate-200 text-sm text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all" />
+                      {!form.all_day && (
+                        <input type="time" value={form.start_time} onChange={(e) => set("start_time", e.target.value)}
+                          className="px-3 py-2.5 rounded-xl bg-slate-50 border-2 border-slate-200 text-sm text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all" />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 text-slate-300">
+                    <div className="flex-1 h-px bg-slate-100" />
+                    <ArrowRight className="w-3 h-3 shrink-0" />
+                    <div className="flex-1 h-px bg-slate-100" />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Fin</label>
+                    <div className={cn("grid gap-2", form.all_day ? "grid-cols-1" : "grid-cols-[1fr_auto]")}>
+                      <input type="date" value={form.end_date} onChange={(e) => set("end_date", e.target.value)}
+                        className="px-3 py-2.5 rounded-xl bg-slate-50 border-2 border-slate-200 text-sm text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all" />
+                      {!form.all_day && (
+                        <input type="time" value={form.end_time} onChange={(e) => set("end_time", e.target.value)}
+                          className="px-3 py-2.5 rounded-xl bg-slate-50 border-2 border-slate-200 text-sm text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recurrence */}
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                    <Repeat className="w-3 h-3" />Se repite
+                  </label>
+
+                  {/* Frequency cards */}
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {([
+                      { id: "none",   label: "No se repite", hint: "Una sola vez"      },
+                      { id: "daily",  label: "Cada día",     hint: "Todos los días"    },
+                      { id: "weekly", label: "Cada semana",  hint: "Días específicos"  },
+                    ] as { id: RecurrenceFreq; label: string; hint: string }[]).map(({ id, label, hint }) => {
+                      const active = form.recurrence_freq === id;
+                      return (
+                        <button key={id}
+                          onClick={() => {
+                            // When switching to weekly with no preselected days, pick the start day's weekday
+                            if (id === "weekly" && form.recurrence_days.length === 0) {
+                              const sd = new Date(form.start_date + "T00:00:00");
+                              const wd = (sd.getDay() + 6) % 7;
+                              setForm((f) => ({ ...f, recurrence_freq: id, recurrence_days: [wd] }));
+                            } else {
+                              set("recurrence_freq", id);
+                            }
+                          }}
+                          className={cn(
+                            "px-2.5 py-2 rounded-xl border-2 text-left transition-all",
+                            active
+                              ? "shadow-sm scale-[1.02]"
+                              : "bg-white border-slate-200 hover:border-slate-300",
+                          )}
+                          style={active ? { borderColor: form.color, backgroundColor: form.color + "10" } : {}}>
+                          <p className="text-xs font-bold text-slate-800 leading-tight">{label}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{hint}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Weekly day picker */}
+                  {form.recurrence_freq === "weekly" && (
+                    <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-3 mb-3"
+                      style={{ animation: "evSlideFwd 0.22s cubic-bezier(0.16,1,0.3,1) both" }}>
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Días de la semana</p>
+                      <div className="flex gap-1.5">
+                        {DAYS_SHORT.map((d, idx) => {
+                          const on = form.recurrence_days.includes(idx);
+                          return (
+                            <button key={idx}
+                              onClick={() => {
+                                setForm((f) => ({
+                                  ...f,
+                                  recurrence_days: on
+                                    ? f.recurrence_days.filter((x) => x !== idx)
+                                    : [...f.recurrence_days, idx],
+                                }));
+                              }}
+                              className={cn(
+                                "flex-1 py-2 rounded-lg text-xs font-bold border-2 transition-all",
+                                on ? "text-white shadow-sm scale-105" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300",
+                              )}
+                              style={on ? { backgroundColor: form.color, borderColor: form.color } : {}}>
+                              {d}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex gap-1.5 mt-2">
+                        <button
+                          onClick={() => setForm((f) => ({ ...f, recurrence_days: [0, 1, 2, 3, 4] }))}
+                          className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold bg-white border border-slate-200 text-slate-600 hover:border-slate-300 transition">
+                          L–V (entre semana)
+                        </button>
+                        <button
+                          onClick={() => setForm((f) => ({ ...f, recurrence_days: [0, 1, 2, 3, 4, 5, 6] }))}
+                          className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold bg-white border border-slate-200 text-slate-600 hover:border-slate-300 transition">
+                          Todos
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Until date */}
+                  {form.recurrence_freq !== "none" && (
+                    <div style={{ animation: "evSlideFwd 0.22s cubic-bezier(0.16,1,0.3,1) both" }}>
+                      <label className="text-[11px] font-semibold text-slate-500 mb-1.5 block">Termina (opcional)</label>
+                      <div className="grid grid-cols-[1fr_auto] gap-2">
+                        <input type="date" value={form.recurrence_until}
+                          onChange={(e) => set("recurrence_until", e.target.value)}
+                          min={form.start_date}
+                          className="px-3 py-2 rounded-xl bg-white border-2 border-slate-200 text-sm text-slate-700 outline-none focus:border-slate-300 transition-all" />
+                        {form.recurrence_until && (
+                          <button onClick={() => set("recurrence_until", "")}
+                            className="px-3 rounded-xl border-2 border-slate-200 text-xs font-medium text-slate-500 hover:bg-slate-50 transition">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      {!form.recurrence_until && (
+                        <p className="text-[10px] text-slate-400 mt-1">Sin fecha límite — se repite indefinidamente.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── Step 3 — Details ── */}
+            {step === 2 && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-slate-800 leading-tight">Detalles</h3>
+                  <p className="text-sm text-slate-500 mt-1">Todo opcional. Personaliza si quieres.</p>
+                </div>
+
+                {/* Location */}
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                    <MapPin className="w-3 h-3" />Ubicación
+                  </label>
+                  <input type="text" value={form.location} onChange={(e) => set("location", e.target.value)}
+                    placeholder="Sala, URL de la llamada o lugar"
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border-2 border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:bg-white focus:border-slate-300 transition-all" />
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                    <AlignLeft className="w-3 h-3" />Descripción
+                  </label>
+                  <textarea value={form.description} onChange={(e) => set("description", e.target.value)}
+                    placeholder="Agenda, notas o contexto…" rows={3}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border-2 border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:bg-white focus:border-slate-300 transition-all resize-none" />
+                </div>
+
+                {/* Color */}
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 block">Color</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {EVENT_COLORS.map((c) => {
+                      const active = form.color === c;
+                      return (
+                        <button key={c} onClick={() => set("color", c)}
+                          className={cn(
+                            "rounded-full transition-all",
+                            active ? "w-9 h-9 ring-2 ring-offset-2" : "w-8 h-8 hover:scale-110",
+                          )}
+                          style={{ backgroundColor: c, ...(active ? { animation: "evPop 0.25s ease both" } : {}) }} />
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Notification card */}
+                <div className={cn(
+                  "rounded-2xl border-2 p-4 transition-all",
+                  form.notify ? "bg-white border-slate-200" : "bg-slate-50 border-slate-100",
+                )}>
+                  <button onClick={() => set("notify", !form.notify)}
+                    className="w-full flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                      <Bell className="w-4 h-4 text-slate-400" />Recordatorio
+                    </span>
+                    <div className={cn(
+                      "relative rounded-full transition-colors shrink-0",
+                      form.notify ? "bg-[#050040]" : "bg-slate-300",
+                    )} style={{ width: 36, height: 20 }}>
+                      <span className={cn(
+                        "absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200",
+                        form.notify ? "translate-x-[18px]" : "translate-x-0.5",
+                      )} />
+                    </div>
+                  </button>
+
+                  {form.notify && (
+                    <div className="mt-3 pt-3 border-t border-slate-100 space-y-3"
+                      style={{ animation: "evSlideFwd 0.25s cubic-bezier(0.16,1,0.3,1) both" }}>
+                      <div>
+                        <p className="text-xs text-slate-500 mb-1.5">¿Cuánto antes?</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {NOTIFY_OPTS.map(({ value, label }) => (
+                            <button key={value} onClick={() => set("notify_minutes", value)}
+                              className={cn(
+                                "px-2.5 py-1 rounded-lg text-xs font-medium border transition-all",
+                                form.notify_minutes === value
+                                  ? "bg-[#050040] text-white border-[#050040]"
+                                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-300",
+                              )}>{label}</button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button onClick={() => set("notify_email", !form.notify_email)}
+                        className="w-full flex items-center justify-between">
+                        <span className="text-xs text-slate-600">También por email</span>
+                        <div className={cn(
+                          "relative rounded-full transition-colors shrink-0",
+                          form.notify_email ? "bg-[#050040]" : "bg-slate-300",
+                        )} style={{ width: 32, height: 18 }}>
+                          <span className={cn(
+                            "absolute top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform duration-200",
+                            form.notify_email ? "translate-x-[15px]" : "translate-x-0.5",
+                          )} />
+                        </div>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
 
         {/* Footer */}
-        <div className={cn("flex items-center px-6 py-4 border-t border-slate-100 shrink-0", editing ? "justify-between" : "justify-end")}>
-          {editing && (
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-red-600 border border-red-100 bg-red-50 hover:bg-red-100 transition-all disabled:opacity-50"
-            >
-              <Trash2 className="w-3.5 h-3.5" />{deleting ? "Eliminando…" : "Eliminar"}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 shrink-0 gap-2">
+          <div className="flex items-center gap-2">
+            {step > 0 ? (
+              <button onClick={back}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
+                <ArrowLeft className="w-3.5 h-3.5" />Atrás
+              </button>
+            ) : editing ? (
+              <button onClick={handleDelete} disabled={deleting}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-red-600 border border-red-100 bg-red-50 hover:bg-red-100 transition-all disabled:opacity-50">
+                <Trash2 className="w-3.5 h-3.5" />{deleting ? "Eliminando…" : "Eliminar"}
+              </button>
+            ) : (
+              <button onClick={onClose}
+                className="px-3 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
+                Cancelar
+              </button>
+            )}
+          </div>
+
+          {step < 2 ? (
+            <button onClick={next} disabled={step === 0 && !canNext0}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold transition-all disabled:opacity-40 hover:brightness-110 hover:shadow-md"
+              style={{ backgroundColor: form.color }}>
+              Siguiente <ArrowRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <button onClick={handleSave} disabled={saving || !form.title.trim()}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold transition-all disabled:opacity-40 hover:brightness-110 hover:shadow-md"
+              style={{ backgroundColor: form.color }}>
+              {saving
+                ? "Guardando…"
+                : editing
+                  ? <>Guardar cambios <Check className="w-4 h-4" /></>
+                  : <>Crear <Check className="w-4 h-4" /></>}
             </button>
           )}
-          <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
-              Cancelar
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving || !form.title.trim()}
-              className="px-4 py-2 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 disabled:opacity-50 transition-all"
-            >
-              {saving ? "Guardando…" : editing ? "Guardar cambios" : "Crear"}
-            </button>
-          </div>
         </div>
       </div>
     </div>
-  );
-}
-
-// ── DayPanel ───────────────────────────────────────────────────────────────────
-interface DayPanelProps {
-  day:      Date;
-  events:   CalEvent[];
-  onClose:  () => void;
-  onNew:    (type: EventType) => void;
-  onEdit:   (ev: CalEvent) => void;
-}
-function DayPanel({ day, events, onClose, onNew, onEdit }: DayPanelProps) {
-  return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm lg:bg-transparent lg:backdrop-blur-none" style={{ animation: "mcalOverlay 0.18s ease both" }} onClick={onClose} />
-      <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-sm bg-white shadow-2xl flex flex-col border-l border-slate-100" style={{ animation: "mcalPanel 0.26s cubic-bezier(0.16,1,0.3,1) both" }}>
-        {/* Header */}
-        <div className="px-5 py-5 border-b border-slate-100 shrink-0">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <p className="text-xs text-slate-400 font-medium">{MONTHS_ES[day.getMonth()]} {day.getFullYear()}</p>
-              <h2 className="text-xl font-bold text-slate-800">{fmtDateLong(day)}</h2>
-            </div>
-            <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 transition-colors">
-              <X className="w-5 h-5 text-slate-500" />
-            </button>
-          </div>
-          {/* Add buttons */}
-          <div className="flex flex-wrap gap-2">
-            {(["meeting","event","reminder"] as EventType[]).map((t) => {
-              const m = TYPE_META[t];
-              return (
-                <button
-                  key={t}
-                  onClick={() => onNew(t)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all hover:opacity-90"
-                  style={{ backgroundColor: m.color }}
-                >
-                  <Plus className="w-3.5 h-3.5" />{m.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Events list */}
-        <div className="flex-1 overflow-y-auto">
-          {events.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-center px-6">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/undraw_booking_8vl5.svg" alt="" className="w-40 h-auto mb-4 opacity-90" draggable={false} />
-              <p className="text-sm font-medium text-slate-500">Sin eventos este día</p>
-              <p className="text-xs text-slate-400 mt-1">Añade una reunión, evento o recordatorio</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-50">
-              {events.map((ev) => (
-                <button
-                  key={ev.id}
-                  onClick={() => onEdit(ev)}
-                  className="w-full flex items-start gap-3 px-5 py-4 hover:bg-slate-50 transition-colors text-left group"
-                >
-                  <div className="w-1 self-stretch rounded-full shrink-0 mt-1" style={{ backgroundColor: ev.color }} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-800 truncate">{ev.title}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      {ev.all_day ? (
-                        <span className="text-xs text-slate-400">Todo el día</span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-xs text-slate-400">
-                          <Clock className="w-3 h-3 shrink-0" />{fmtTime(ev.start_at)}
-                          {ev.end_at && ` – ${fmtTime(ev.end_at)}`}
-                        </span>
-                      )}
-                      <span className="text-xs font-medium px-1.5 py-0.5 rounded-md text-white"
-                        style={{ backgroundColor: ev.color + "cc" }}>
-                        {TYPE_META[ev.type].label}
-                      </span>
-                    </div>
-                    {ev.location && (
-                      <p className="flex items-center gap-1 text-xs text-slate-400 mt-0.5 truncate">
-                        <MapPin className="w-3 h-3 shrink-0" />{ev.location}
-                      </p>
-                    )}
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5" />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </>
   );
 }
 
@@ -612,12 +847,13 @@ function TimeGrid({ days, events, today, onSlotClick, onEventClick }: TimeGridPr
                 <div className="px-1 pb-1 space-y-0.5">
                   {allDayEvs.map((ev) => (
                     <button
-                      key={ev.id}
+                      key={`${ev.id}-${ev.start_at}`}
                       onClick={() => onEventClick(ev)}
-                      className="w-full text-left text-xs font-medium text-white px-1.5 py-0.5 rounded truncate"
+                      className="w-full text-left text-xs font-medium text-white px-1.5 py-0.5 rounded truncate flex items-center gap-1"
                       style={{ backgroundColor: ev.color }}
                     >
-                      {ev.title}
+                      {ev.recurrence_freq && <Repeat className="w-2.5 h-2.5 shrink-0 opacity-80" />}
+                      <span className="truncate">{ev.title}</span>
                     </button>
                   ))}
                 </div>
@@ -678,7 +914,7 @@ function TimeGrid({ days, events, today, onSlotClick, onEventClick }: TimeGridPr
                   const leftPct  = (ev.col / ev.cols) * 100;
                   return (
                     <button
-                      key={ev.id}
+                      key={`${ev.id}-${ev.start_at}`}
                       onClick={(e2) => { e2.stopPropagation(); onEventClick(ev); }}
                       className="absolute z-10 rounded-lg px-1.5 py-1 text-left overflow-hidden text-white hover:brightness-90 transition-all"
                       style={{
@@ -689,7 +925,10 @@ function TimeGrid({ days, events, today, onSlotClick, onEventClick }: TimeGridPr
                         backgroundColor: ev.color,
                       }}
                     >
-                      <p className="text-[10px] font-semibold leading-tight truncate">{ev.title}</p>
+                      <div className="flex items-center gap-1">
+                        {ev.recurrence_freq && <Repeat className="w-2.5 h-2.5 shrink-0 opacity-80" />}
+                        <p className="text-[10px] font-semibold leading-tight truncate">{ev.title}</p>
+                      </div>
                       {heightPx >= 40 && (
                         <p className="text-[9px] opacity-80 leading-tight mt-0.5">
                           {fmtTime(ev.start_at)}{ev.end_at ? ` – ${fmtTime(ev.end_at)}` : ""}
@@ -788,23 +1027,28 @@ function MonthView({ year, month, today, events, draggingId, dragOverDate, onDay
               </div>
 
               <div className="flex-1 space-y-0.5 overflow-hidden min-h-0">
-                {dayEvents.slice(0, 3).map((ev) => (
-                  <div
-                    key={ev.id}
-                    onMouseDown={(e) => { e.stopPropagation(); onEventDown(e, ev); }}
-                    className={cn(
-                      "flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-white truncate cursor-grab active:cursor-grabbing transition-opacity",
-                      draggingId === ev.id && "opacity-40",
-                    )}
-                    style={{ backgroundColor: ev.color }}
-                  >
-                    {!ev.all_day && (
-                      <span className="shrink-0 opacity-80">{fmtTime(ev.start_at)}</span>
-                    )}
-                    <span className="truncate">{ev.title}</span>
-                    <GripVertical className="w-2.5 h-2.5 shrink-0 opacity-50 hidden sm:block" />
-                  </div>
-                ))}
+                {dayEvents.slice(0, 3).map((ev) => {
+                  const isRec = !!ev.recurrence_freq;
+                  return (
+                    <div
+                      key={`${ev.id}-${ev.start_at}`}
+                      onMouseDown={(e) => { e.stopPropagation(); onEventDown(e, ev); }}
+                      className={cn(
+                        "flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-white truncate transition-opacity",
+                        isRec ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
+                        draggingId === ev.id && !isRec && "opacity-40",
+                      )}
+                      style={{ backgroundColor: ev.color }}
+                    >
+                      {isRec && <Repeat className="w-2.5 h-2.5 shrink-0 opacity-80" />}
+                      {!ev.all_day && (
+                        <span className="shrink-0 opacity-80">{fmtTime(ev.start_at)}</span>
+                      )}
+                      <span className="truncate">{ev.title}</span>
+                      {!isRec && <GripVertical className="w-2.5 h-2.5 shrink-0 opacity-50 hidden sm:block" />}
+                    </div>
+                  );
+                })}
                 {dayEvents.length > 3 && (
                   <p className="text-[10px] text-slate-400 pl-1.5 font-medium">+{dayEvents.length - 3} más</p>
                 )}
@@ -989,21 +1233,21 @@ export default function MeetCalendarView() {
   const [events,      setEvents]      = React.useState<CalEvent[]>([]);
   const [loading,     setLoading]     = React.useState(true);
 
-  // Day panel
-  const [selectedDay,   setSelectedDay]   = React.useState<Date | null>(null);
-  const [dayPanelOpen,  setDayPanelOpen]  = React.useState(false);
-
   // Event modal
   const [modalOpen,    setModalOpen]    = React.useState(false);
   const [editingEvent, setEditingEvent] = React.useState<CalEvent | null>(null);
   const [modalDefs,    setModalDefs]    = React.useState<EventFormData>(() => formDefaults("meeting"));
 
-  // Drag state
+  // Drag state (also tracks pointer movement to distinguish click vs drag)
   const [draggingId,   setDraggingId]   = React.useState<string | null>(null);
   const [dragOverDate, setDragOverDate] = React.useState<string | null>(null);
-  const dragRef = React.useRef<{ event: CalEvent | null; startDate: string; isDragging: boolean }>({
-    event: null, startDate: "", isDragging: false,
-  });
+  const dragRef = React.useRef<{
+    event: CalEvent | null; startDate: string; isDragging: boolean;
+    startX: number; startY: number; moved: boolean;
+  }>({ event: null, startDate: "", isDragging: false, startX: 0, startY: 0, moved: false });
+
+  // Latest openEdit closure for use inside window event handlers
+  const openEditRef = React.useRef<(ev: CalEvent) => void>(() => {});
 
   const [shareOpen, setShareOpen] = React.useState(false);
 
@@ -1061,18 +1305,39 @@ export default function MeetCalendarView() {
     return () => notifTimers.current.forEach(clearTimeout);
   }, [events]);
 
-  // ── Drag & drop (month view) ─────────────────────────────────────────────────
+  // ── Drag & drop / click on month view ───────────────────────────────────────
+  // - mousedown on event chip → start tracking
+  // - if pointer moves > 5px → drag (rearrange)
+  // - if pointer barely moves → treat as click → open edit form
   React.useEffect(() => {
+    const MOVE_THRESHOLD = 5;
+
     function onMouseMove(e: MouseEvent) {
       if (!dragRef.current.isDragging) return;
+      const dx = e.clientX - dragRef.current.startX;
+      const dy = e.clientY - dragRef.current.startY;
+      if (!dragRef.current.moved && Math.hypot(dx, dy) > MOVE_THRESHOLD) {
+        dragRef.current.moved = true;
+        if (dragRef.current.event) setDraggingId(dragRef.current.event.id);
+      }
+      if (!dragRef.current.moved) return;
       const el  = document.elementFromPoint(e.clientX, e.clientY);
       const day = (el?.closest("[data-date]") as HTMLElement | null)?.dataset.date ?? null;
       setDragOverDate(day);
     }
+
     async function onMouseUp(e: MouseEvent) {
       if (!dragRef.current.isDragging) return;
       dragRef.current.isDragging = false;
       setDraggingId(null);
+
+      // Click without significant movement → open the editor
+      if (!dragRef.current.moved) {
+        setDragOverDate(null);
+        const ev = dragRef.current.event;
+        if (ev) openEditRef.current(ev);
+        return;
+      }
 
       const el      = document.elementFromPoint(e.clientX, e.clientY);
       const newDate = (el?.closest("[data-date]") as HTMLElement | null)?.dataset.date;
@@ -1080,6 +1345,9 @@ export default function MeetCalendarView() {
       setDragOverDate(null);
 
       if (!newDate || !event || newDate === startDate) return;
+
+      // Recurring events cannot be moved by drag — would shift the whole series
+      if (event.recurrence_freq) return;
 
       const oldStart = new Date(event.start_at);
       const [ny, nm, nd] = newDate.split("-").map(Number);
@@ -1116,8 +1384,10 @@ export default function MeetCalendarView() {
       event:      ev,
       startDate:  isoDate(new Date(ev.start_at)),
       isDragging: true,
+      startX:     e.clientX,
+      startY:     e.clientY,
+      moved:      false,
     };
-    setDraggingId(ev.id);
   }
 
   // ── Animation state ──────────────────────────────────────────────────────────
@@ -1162,7 +1432,9 @@ export default function MeetCalendarView() {
     });
     if (res.ok) {
       const data = await res.json();
-      setEvents((prev) => [...prev, data.event]);
+      // Recurring events expand into multiple instances on the server, so reload
+      if (data.event?.recurrence_freq) await loadEvents();
+      else setEvents((prev) => [...prev, data.event]);
     }
     closeModal();
   }
@@ -1175,16 +1447,19 @@ export default function MeetCalendarView() {
     });
     if (res.ok) {
       const data = await res.json();
-      setEvents((prev) => prev.map((ev) => ev.id === id ? data.event : ev));
+      // Refetch if the event is (now or was) recurring, so all instances refresh
+      const wasRecurring = events.some((ev) => ev.id === id && !!ev.recurrence_freq);
+      if (data.event?.recurrence_freq || wasRecurring) await loadEvents();
+      else setEvents((prev) => prev.map((ev) => ev.id === id ? data.event : ev));
     }
     closeModal();
   }
 
   async function deleteEvent(id: string) {
     await fetch(`/api/meetcalendar/events/${id}`, { method: "DELETE" });
+    // Deleting a series removes every instance, so just refilter
     setEvents((prev) => prev.filter((ev) => ev.id !== id));
     closeModal();
-    setDayPanelOpen(false);
   }
 
   // ── Modal helpers ────────────────────────────────────────────────────────────
@@ -1203,15 +1478,22 @@ export default function MeetCalendarView() {
     setEditingEvent(null);
   }
 
-  // ── Day panel helpers ────────────────────────────────────────────────────────
-  function openDayPanel(day: Date) {
-    setSelectedDay(day);
-    setDayPanelOpen(true);
-  }
+  // Keep the latest openEdit in a ref for the global mouseup handler
+  openEditRef.current = openEdit;
 
-  function eventsForDay(day: Date): CalEvent[] {
-    return events.filter((ev) => sameDay(new Date(ev.start_at), day))
-      .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
+  // ── Day click (month view) — opens the create form directly ──────────────────
+  function handleDayClick(date: Date) {
+    const d = new Date(date);
+    const now = new Date();
+    if (sameDay(d, now)) {
+      // Pick the next 30-minute slot
+      const mins = Math.ceil((now.getMinutes() + 1) / 30) * 30;
+      d.setHours(now.getHours(), 0, 0, 0);
+      d.setMinutes(mins);
+    } else {
+      d.setHours(9, 0, 0, 0);
+    }
+    openNew("meeting", d);
   }
 
   // ── Slot click (week/day view) ────────────────────────────────────────────────
@@ -1316,7 +1598,7 @@ export default function MeetCalendarView() {
             events={events}
             draggingId={draggingId}
             dragOverDate={dragOverDate}
-            onDayClick={openDayPanel}
+            onDayClick={handleDayClick}
             onEventDown={handleEventMouseDown}
           />
         ) : view === "week" ? (
@@ -1338,22 +1620,6 @@ export default function MeetCalendarView() {
         )}
       </div>
 
-      {/* ── Day Panel ── */}
-      {dayPanelOpen && selectedDay && (
-        <DayPanel
-          day={selectedDay}
-          events={eventsForDay(selectedDay)}
-          onClose={() => setDayPanelOpen(false)}
-          onNew={(type) => {
-            setDayPanelOpen(false);
-            openNew(type, selectedDay);
-          }}
-          onEdit={(ev) => {
-            setDayPanelOpen(false);
-            openEdit(ev);
-          }}
-        />
-      )}
 
       {/* ── Event Modal ── */}
       {modalOpen && (

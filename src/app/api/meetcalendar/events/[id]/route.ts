@@ -61,7 +61,11 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
 
-  const allowed = ["title","description","location","type","start_at","end_at","all_day","color","notify_email","notify_minutes"];
+  const allowed = [
+    "title","description","location","type","start_at","end_at","all_day",
+    "color","notify_email","notify_minutes",
+    "recurrence_freq","recurrence_days","recurrence_until",
+  ];
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const key of allowed) {
     if (body[key] !== undefined) patch[key] = body[key];

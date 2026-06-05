@@ -1,4 +1,14 @@
 "use client";
+/**
+ * RoomsView — manage team spaces (rooms) and their members/meetings.
+ *
+ * Renders two levels:
+ *   1. Room list — grid of room cards with member count and today's meetings
+ *   2. Room detail — members list + today's meeting schedule for a selected room
+ *
+ * Members are stored in the room_members table; meetings are calendar_events
+ * with a room_id. Both are fetched fresh when a room is selected.
+ */
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import {
@@ -38,6 +48,11 @@ function todayRange() {
 function initials(name: string) {
   return name.split(" ").slice(0, 2).map(n => n[0]).join("").toUpperCase();
 }
+/**
+ * Return the local UTC offset as "+HH:MM" or "-HH:MM".
+ * Passed to the calendar API so new events created from the room detail view
+ * are stored with the correct local timezone offset.
+ */
 function localOffsetStr() {
   const off  = -new Date().getTimezoneOffset();
   const sign = off >= 0 ? "+" : "-";
