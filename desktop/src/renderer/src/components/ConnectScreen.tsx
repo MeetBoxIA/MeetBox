@@ -46,7 +46,13 @@ export default function ConnectScreen({ onConnected }: ConnectScreenProps) {
       // restrictions that would block a direct fetch from the renderer.
       const { ok, data } = await window.electronAPI.httpPost(
         `${MEETBOX_API}/api/auth/desktop/connect`,
-        { token: normalized },
+        {
+          token:        normalized,
+          // Device fingerprint for the web "active sessions" list.
+          platform:     navigator.platform,
+          app_version:  '1.0.0',
+          device_label: navigator.userAgent.split(') ')[0]?.split('(')[1] ?? 'Desktop',
+        },
       )
 
       if (!ok) {
@@ -58,6 +64,8 @@ export default function ConnectScreen({ onConnected }: ConnectScreenProps) {
       const userData = data.user as ConnectionData['user']
       const connection: ConnectionData = {
         token:       normalized,
+        // Long-lived bearer token used for every /api/desktop/* request.
+        accessToken: (data.access_token as string) ?? undefined,
         user:        userData,
         connectedAt: new Date().toISOString(),
       }

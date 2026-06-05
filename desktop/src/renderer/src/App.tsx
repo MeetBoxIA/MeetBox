@@ -68,6 +68,12 @@ export default function App() {
   const [updateReady,    setUpdateReady]    = useState(false)
   const [appVersion,     setAppVersion]     = useState('')
 
+  // Backend pipeline state (upload → processing → MeetAction session)
+  const [uploadState,    setUploadState]    = useState<'idle' | 'uploading' | 'processing' | 'done' | 'error'>('idle')
+  const [jobProgress,    setJobProgress]    = useState(0)
+  const [jobStage,       setJobStage]       = useState<string>('')
+  const [jobSessionId,   setJobSessionId]   = useState<string | null>(null)
+
   // Comprobar si ya existe una conexión guardada al iniciar
   useEffect(() => {
     window.electronAPI.getConnection().then((saved) => {
@@ -250,11 +256,72 @@ export default function App() {
       const savedPath = await window.electronAPI.saveRecording(buffer, filename)
       setSavedFilePath(savedPath)
       setStatus('done')
+
+      // After the local save succeeds, upload to the backend pipeline so the
+      // recording is transcribed, analyzed and turned into a MeetAction session.
+      void uploadToBackend(buffer, filename)
     } catch {
       setErrorMsg('Error al guardar la grabación.')
       setStatus('error')
     }
   }, [stopAudioCapture])
+
+  // ── Upload to backend + poll the processing job ─────────────────────────────
+  const uploadToBackend = useCallback(async (buffer: ArrayBuffer, filename: string) => {
+    setUploadState('uploading')
+    setJobProgress(0)
+    setJobStage('Subiendo grabación…')
+    setJobSessionId(null)
+
+    const meta = {
+      title:            `Reunión ${new Date().toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
+      duration_seconds: timerSecs,
+      recorded_at:      nowISO(),
+      timezone:         Intl.DateTimeFormat().resolvedOptions().timeZone,
+    }
+
+    const res = await window.electronAPI.uploadRecording(buffer, filename, meta)
+    if (!res.ok || !res.jobId) {
+      setUploadState('error')
+      setJobStage(res.error ?? 'Error al subir la grabación')
+      return
+    }
+
+    // Poll the job status until it completes or fails (max ~5 min).
+    setUploadState('processing')
+    const jobId = res.jobId
+    const stageLabels: Record<string, string> = {
+      uploaded:          'En cola…',
+      queued:            'En cola…',
+      transcribing:      'Transcribiendo audio…',
+      analyzing:         'Analizando con IA…',
+      matching_calendar: 'Buscando reunión en el calendario…',
+      creating_actions:  'Creando acciones…',
+      completed:         'Procesamiento completado',
+      failed:            'El procesamiento falló',
+    }
+
+    const deadline = Date.now() + 5 * 60_000
+    const poll = async (): Promise<void> => {
+      const s = await window.electronAPI.getJobStatus(jobId)
+      if (s.ok && s.status) {
+        setJobProgress(s.progress ?? 0)
+        setJobStage(stageLabels[s.status] ?? s.status)
+        if (s.status === 'completed') {
+          setUploadState('done')
+          setJobSessionId(s.session_id ?? null)
+          return
+        }
+        if (s.status === 'failed') {
+          setUploadState('error')
+          setJobStage(s.error ?? 'El procesamiento falló')
+          return
+        }
+      }
+      if (Date.now() < deadline) setTimeout(poll, 2000)
+    }
+    setTimeout(poll, 2000)
+  }, [timerSecs])
 
   const toggleRecording = useCallback(() => {
     if (status === 'idle' || status === 'done' || status === 'error') {
@@ -270,6 +337,10 @@ export default function App() {
     setSavedFilePath(null)
     setErrorMsg(null)
     setTimerSecs(0)
+    setUploadState('idle')
+    setJobProgress(0)
+    setJobStage('')
+    setJobSessionId(null)
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -321,6 +392,19 @@ export default function App() {
             Reiniciar
           </button>
         </div>
+      )}
+
+      {/* Backend processing banner — visible while the recording is uploaded
+          and processed into a MeetAction session. */}
+      {uploadState !== 'idle' && view !== 'settings' && (
+        <ProcessingBanner
+          state={uploadState}
+          progress={jobProgress}
+          stage={jobStage}
+          hasSession={!!jobSessionId}
+          onOpenDashboard={() => window.electronAPI.openDashboard()}
+          onDismiss={() => { setUploadState('idle'); setJobStage('') }}
+        />
       )}
 
       {/* Vistas */}
@@ -407,6 +491,81 @@ function HomeView({
         onShowInFolder={onShowInFolder}
         onOpenDashboard={onOpenDashboard}
       />
+    </div>
+  )
+}
+
+// ── ProcessingBanner ─────────────────────────────────────────────────────────
+// Compact status strip shown while the recording is uploaded to the backend
+// and processed into a MeetAction session.
+interface ProcessingBannerProps {
+  state:           'uploading' | 'processing' | 'done' | 'error'
+  progress:        number
+  stage:           string
+  hasSession:      boolean
+  onOpenDashboard: () => void
+  onDismiss:       () => void
+}
+
+function ProcessingBanner({ state, progress, stage, hasSession, onOpenDashboard, onDismiss }: ProcessingBannerProps) {
+  const isError = state === 'error'
+  const isDone  = state === 'done'
+  const isBusy  = state === 'uploading' || state === 'processing'
+
+  return (
+    <div className={[
+      'mx-4 mt-3 rounded-xl border px-4 py-3',
+      isError ? 'bg-red-50 border-red-100'
+        : isDone ? 'bg-emerald-50 border-emerald-100'
+        : 'bg-[#050040]/4 border-[#050040]/10',
+    ].join(' ')}>
+      <div className="flex items-center gap-2.5">
+        {isBusy && (
+          <svg className="w-4 h-4 text-[#050040] animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+          </svg>
+        )}
+        {isDone && (
+          <svg className="w-4 h-4 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="none">
+            <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+        {isError && (
+          <svg className="w-4 h-4 text-red-500 shrink-0" viewBox="0 0 24 24" fill="none">
+            <path d="M12 8v5M12 16.5v.5M5 19h14a1 1 0 0 0 .87-1.5l-7-12a1 1 0 0 0-1.74 0l-7 12A1 1 0 0 0 5 19Z"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+        <p className={[
+          'text-xs font-semibold flex-1 truncate',
+          isError ? 'text-red-700' : isDone ? 'text-emerald-700' : 'text-[#050040]',
+        ].join(' ')}>
+          {isDone ? 'Reunión procesada en MeetAction' : stage}
+        </p>
+        {(isDone || isError) && (
+          <button onClick={onDismiss} className="text-slate-400 hover:text-slate-600 transition-colors text-sm leading-none">
+            ✕
+          </button>
+        )}
+      </div>
+
+      {/* Progress bar while busy */}
+      {isBusy && (
+        <div className="h-1 bg-[#050040]/10 rounded-full mt-2 overflow-hidden">
+          <div className="h-full bg-[#050040] rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
+        </div>
+      )}
+
+      {/* CTA when finished */}
+      {isDone && hasSession && (
+        <button
+          onClick={onOpenDashboard}
+          className="mt-2 w-full text-[11px] font-semibold text-white bg-[#050040] rounded-lg py-1.5 hover:bg-slate-800 transition"
+        >
+          Revisar acciones en el dashboard →
+        </button>
+      )}
     </div>
   )
 }

@@ -73,44 +73,6 @@ interface HistoryEntry {
   executed_at:  string;
 }
 
-// ── Demo data — replace with real API calls ────────────────────────────────────
-const DEMO_SESSION: MeetSession = {
-  id:               "demo-001",
-  meeting_name:     "Reunión Q2 Planning — Producto & Diseño",
-  meeting_date:     new Date().toISOString(),
-  duration_seconds: 2847,
-  status:           "pending_review",
-  summary_ai: `La reunión se centró en la planificación del Q2 con énfasis en el rediseño del onboarding,
-optimización del funnel de conversión y definición de métricas de retención. Se acordó priorizar
-la feature de análisis de grabaciones con IA para agosto. Carlos presenta un riesgo de capacidad
-que podría afectar el sprint 3. El equipo de backend bloqueará 2 semanas para refactorización técnica.`,
-  decisions_count:  3,
-  tasks_count:      5,
-  risks_count:      2,
-  next_steps_count: 4,
-  people_mentioned: ["Carlos Ramírez", "Ana Martínez", "Luis Pérez", "Diana López"],
-  calendar_match:   { name: "Q2 Planning Meeting · 10:00", pct: 94 },
-  items: [
-    { id: "a1", type: "task",      destination: "jira",         status: "pending", title: "Rediseñar flujo de onboarding",            description: "Incluir validación de email, tour interactivo y configuración de organización en 3 pasos",  assignee_name: "Carlos Ramírez", assignee_email: "carlos@meetbox.io", priority: "high" },
-    { id: "a2", type: "task",      destination: "jira",         status: "pending", title: "Implementar analytics de retención",       description: "Dashboard con métricas D1, D7, D30 usando eventos de Supabase + visualización Recharts",       assignee_name: "Ana Martínez",   assignee_email: "ana@meetbox.io",    priority: "high" },
-    { id: "a3", type: "decision",  destination: "notion",       status: "pending", title: "Priorizar IA de grabaciones para agosto",  description: "Decisión tomada: la feature de análisis IA de grabaciones se lanza en la semana 3 de agosto",   assignee_name: "Luis Pérez",     assignee_email: "luis@meetbox.io",   priority: "medium" },
-    { id: "a4", type: "risk",      destination: "slack",        status: "pending", title: "Riesgo de capacidad en Sprint 3",          description: "Carlos no podrá dedicar al 100% en sprint 3 por compromisos con otro equipo. Evaluar contratación temporal.", assignee_name: "Diana López", assignee_email: "diana@meetbox.io", priority: "critical" },
-    { id: "a5", type: "next_step", destination: "meetcalendar", status: "pending", title: "Retrospectiva Sprint 2 el próximo lunes",  description: "Agendar sesión de retrospectiva el lunes 10:00 con todo el equipo de producto",                assignee_name: "Carlos Ramírez", assignee_email: "carlos@meetbox.io", priority: "medium" },
-    { id: "a6", type: "note",      destination: "meetbook",     status: "pending", title: "Notas completas del Q2 Planning",          description: "Guardar transcripción completa, decisiones y acuerdos en el cuaderno Producto > Planificación",  assignee_name: "Ana Martínez",   assignee_email: "ana@meetbox.io",    priority: "low" },
-    { id: "a7", type: "task",      destination: "jira",         status: "pending", title: "Optimizar funnel de conversión trial→paid", description: "A/B test en el upgrade modal con 3 variantes. Implementar con Posthog feature flags",           assignee_name: "Luis Pérez",     assignee_email: "luis@meetbox.io",   priority: "high" },
-    { id: "a8", type: "decision",  destination: "notion",       status: "pending", title: "Backend bloquea 2 semanas para refactor", description: "Semanas 3-4 de julio el equipo backend estará en modo refactorización. Sin nuevas features.",      assignee_name: "Diana López",    assignee_email: "diana@meetbox.io",  priority: "medium" },
-  ],
-};
-
-const DEMO_HISTORY: HistoryEntry[] = [
-  { id: "h1", title: "Ticket MEET-142: Onboarding wizard",    destination: "jira",         status: "success", external_url: "#", meeting_name: "Sprint Planning S22",       executed_at: new Date(Date.now() - 86400000).toISOString() },
-  { id: "h2", title: "Mensaje en #producto: Decisión pricing", destination: "slack",        status: "success", external_url: "#", meeting_name: "Sprint Planning S22",       executed_at: new Date(Date.now() - 86400000).toISOString() },
-  { id: "h3", title: "Página Notion: Roadmap Q2",             destination: "notion",       status: "success", external_url: "#", meeting_name: "Kickoff Q2",                executed_at: new Date(Date.now() - 172800000).toISOString() },
-  { id: "h4", title: "Evento: Daily standup recurrente",      destination: "meetcalendar", status: "success", external_url: "#", meeting_name: "Kickoff Q2",                executed_at: new Date(Date.now() - 172800000).toISOString() },
-  { id: "h5", title: "Ticket MEET-138: Fix auth bug",          destination: "jira",         status: "failed",  external_url: "#", meeting_name: "Bug triage semanal",        executed_at: new Date(Date.now() - 259200000).toISOString() },
-  { id: "h6", title: "Nota MeetBook: Decisiones de diseño",   destination: "meetbook",     status: "success", external_url: "#", meeting_name: "Design Review v2.1",        executed_at: new Date(Date.now() - 345600000).toISOString() },
-];
-
 // ── Destination metadata ───────────────────────────────────────────────────────
 const DEST_META: Record<Destination, { label: string; Icon: React.ElementType; color: string; bg: string }> = {
   jira:         { label: "Jira",          Icon: SiJira,         color: "#0052CC", bg: "#EFF4FF" },
@@ -387,61 +349,194 @@ function ExecutionStep({ label, status, delay = 0 }: { label: string; status: "d
 }
 
 // ── MeetActionView ─────────────────────────────────────────────────────────────
+// ── API → UI mappers ───────────────────────────────────────────────────────────
+interface ApiSession {
+  id: string; meeting_name: string; meeting_date: string; duration_seconds: number;
+  status: SessionStatus; summary_ai: string;
+  decisions_count: number; tasks_count: number; risks_count: number; next_steps_count: number;
+  people_mentioned: string[]; calendar_match_pct: number | null;
+  calendar_events: { id: string; title: string; start_at: string } | null;
+}
+
+function mapSession(api: ApiSession, items: ActionItem[]): MeetSession {
+  return {
+    id:               api.id,
+    meeting_name:     api.meeting_name,
+    meeting_date:     api.meeting_date,
+    duration_seconds: api.duration_seconds ?? 0,
+    status:           api.status,
+    summary_ai:       api.summary_ai ?? "",
+    decisions_count:  api.decisions_count ?? 0,
+    tasks_count:      api.tasks_count ?? 0,
+    risks_count:      api.risks_count ?? 0,
+    next_steps_count: api.next_steps_count ?? 0,
+    people_mentioned: api.people_mentioned ?? [],
+    calendar_match:   api.calendar_events
+      ? { name: `${api.calendar_events.title} · ${formatTime(api.calendar_events.start_at)}`, pct: api.calendar_match_pct ?? 0 }
+      : { name: "", pct: 0 },
+    items,
+  };
+}
+
 export default function MeetActionView() {
   const { locale } = useTranslation();
   const [view,       setView]       = React.useState<View>("review");
-  const [session,    setSession]    = React.useState<MeetSession>(DEMO_SESSION);
-  const [history]                   = React.useState<HistoryEntry[]>(DEMO_HISTORY);
+  const [session,    setSession]    = React.useState<MeetSession | null>(null);
+  const [history,    setHistory]    = React.useState<HistoryEntry[]>([]);
+  const [loading,    setLoading]    = React.useState(true);
   const [executing,  setExecuting]  = React.useState(false);
   const [execStep,   setExecStep]   = React.useState(0);
   const [filterType, setFilterType] = React.useState<ActionType | "all">("all");
   const [search,     setSearch]     = React.useState("");
 
-  const approvedItems = session.items.filter((i) => i.status === "approved");
-  const rejectedItems = session.items.filter((i) => i.status === "rejected");
-  const pendingItems  = session.items.filter((i) => i.status === "pending");
+  // ── Load the most recent reviewable session + its items ────────────────────
+  const loadSession = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res  = await fetch("/api/meetaction/sessions?limit=20");
+      const data = res.ok ? await res.json() : { sessions: [] };
+      const sessions: ApiSession[] = data.sessions ?? [];
+      // Prefer a session still pending review; otherwise the most recent.
+      const active = sessions.find((s) => s.status === "pending_review") ?? sessions[0] ?? null;
+      if (!active) { setSession(null); return; }
 
-  const filteredItems = session.items.filter((item) => {
+      const itemsRes  = await fetch(`/api/meetaction/sessions/${active.id}/items`);
+      const itemsData = itemsRes.ok ? await itemsRes.json() : { items: [] };
+      setSession(mapSession(active, itemsData.items ?? []));
+    } catch {
+      setSession(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // ── Load the execution history ─────────────────────────────────────────────
+  const loadHistory = React.useCallback(async () => {
+    try {
+      const res  = await fetch("/api/meetaction/history?limit=100");
+      const data = res.ok ? await res.json() : { history: [] };
+      type ApiLog = {
+        id: string; title: string; destination: Destination; status: "success" | "failed";
+        external_url: string | null; executed_at: string;
+        meet_action_sessions: { meeting_name: string } | null;
+      };
+      const entries: HistoryEntry[] = (data.history ?? []).map((h: ApiLog) => ({
+        id:           h.id,
+        title:        h.title,
+        destination:  h.destination,
+        status:       h.status,
+        external_url: h.external_url ?? "#",
+        meeting_name: h.meet_action_sessions?.meeting_name ?? "Reunión",
+        executed_at:  h.executed_at,
+      }));
+      setHistory(entries);
+    } catch {
+      setHistory([]);
+    }
+  }, []);
+
+  React.useEffect(() => { loadSession(); loadHistory(); }, [loadSession, loadHistory]);
+
+  const items = session?.items ?? [];
+  const approvedItems = items.filter((i) => i.status === "approved");
+  const rejectedItems = items.filter((i) => i.status === "rejected");
+  const pendingItems  = items.filter((i) => i.status === "pending");
+
+  const filteredItems = items.filter((item) => {
     if (filterType !== "all" && item.type !== filterType) return false;
     if (search && !item.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
+  // Optimistic toggle + persist to the backend.
   function toggleItem(id: string, status: "approved" | "rejected" | "pending") {
-    setSession((s) => ({
-      ...s,
-      items: s.items.map((i) => i.id === id ? { ...i, status } : i),
-    }));
+    setSession((s) => s ? { ...s, items: s.items.map((i) => i.id === id ? { ...i, status } : i) } : s);
+    void fetch(`/api/meetaction/items/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
   }
 
   function editItem(id: string, patch: Partial<ActionItem>) {
-    setSession((s) => ({
-      ...s,
-      items: s.items.map((i) => i.id === id ? { ...i, ...patch } : i),
-    }));
+    setSession((s) => s ? { ...s, items: s.items.map((i) => i.id === id ? { ...i, ...patch } : i) } : s);
+    void fetch(`/api/meetaction/items/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
   }
 
   function approveAll() {
-    setSession((s) => ({
-      ...s,
-      items: s.items.map((i) => i.status === "pending" ? { ...i, status: "approved" } : i),
-    }));
+    if (!session) return;
+    const pendingIds = session.items.filter((i) => i.status === "pending").map((i) => i.id);
+    setSession((s) => s ? { ...s, items: s.items.map((i) => i.status === "pending" ? { ...i, status: "approved" } : i) } : s);
+    void Promise.all(pendingIds.map((id) =>
+      fetch(`/api/meetaction/items/${id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "approved" }),
+      }),
+    ));
   }
 
+  function resetReview() {
+    if (!session) return;
+    setSession((s) => s ? { ...s, items: s.items.map((i) => ({ ...i, status: "pending" as ActionStatus })) } : s);
+    void Promise.all(session.items.map((i) =>
+      fetch(`/api/meetaction/items/${i.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "pending" }),
+      }),
+    ));
+  }
+
+  // ── Approve + execute against the real backend ─────────────────────────────
   async function handleExecute() {
+    if (!session) return;
     setExecuting(true);
+    setExecStep(0);
     setView("execution");
-    // Simulate step-by-step execution
-    const steps = [0, 1, 2, 3, 4, 5];
-    for (const step of steps) {
-      await new Promise((r) => setTimeout(r, 900 + step * 200));
-      setExecStep(step + 1);
+
+    const totalSteps = destinations.length + 3;
+    // Animate the early "already done" stages while the request is in flight.
+    let step = 0;
+    const tick = setInterval(() => {
+      step = Math.min(step + 1, totalSteps - 1);
+      setExecStep(step);
+    }, 700);
+
+    try {
+      // 1. Approve the session (persist approved/rejected decisions)
+      await fetch(`/api/meetaction/sessions/${session.id}/approve`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          approve: approvedItems.map((i) => i.id),
+          reject:  rejectedItems.map((i) => i.id),
+        }),
+      });
+      // 2. Execute the approved items (dispatch to destinations)
+      await fetch(`/api/meetaction/sessions/${session.id}/execute`, { method: "POST" });
+    } catch {
+      /* errors surface in the history view */
+    } finally {
+      clearInterval(tick);
+      setExecStep(totalSteps);
+      setExecuting(false);
+      loadHistory();           // refresh history with the new executions
     }
-    setExecuting(false);
   }
 
   const destinations = [...new Set(approvedItems.map((i) => i.destination))];
   const assignees    = [...new Set(approvedItems.map((i) => i.assignee_name).filter(Boolean))];
+
+  // Dynamically group history entries by meeting name (most recent first).
+  const historyGroups = React.useMemo(() => {
+    const groups = new Map<string, HistoryEntry[]>();
+    for (const entry of history) {
+      const list = groups.get(entry.meeting_name) ?? [];
+      list.push(entry);
+      groups.set(entry.meeting_name, list);
+    }
+    return [...groups.entries()];
+  }, [history]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -505,8 +600,39 @@ export default function MeetActionView() {
       <div className="flex-1 overflow-y-auto">
         <AnimatePresence mode="wait">
 
+          {/* ──────────────── LOADING ──────────────── */}
+          {view === "review" && loading && (
+            <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="flex items-center justify-center py-20">
+              <RefreshCw className="w-6 h-6 text-slate-300 animate-spin" />
+            </motion.div>
+          )}
+
+          {/* ──────────────── EMPTY STATE ──────────────── */}
+          {view === "review" && !loading && !session && (
+            <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="flex flex-col items-center justify-center py-20 text-center px-6">
+              <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+                <Cpu className="w-8 h-8 text-slate-300" />
+              </div>
+              <h2 className="text-lg font-bold text-slate-700">
+                {locale === "en" ? "No sessions to review yet" : "Aún no hay sesiones para revisar"}
+              </h2>
+              <p className="text-sm text-slate-400 mt-1 max-w-sm">
+                {locale === "en"
+                  ? "Record a meeting from MeetBox Desktop. Once processed, the AI-detected actions will appear here for your review."
+                  : "Graba una reunión desde MeetBox Desktop. Cuando se procese, las acciones detectadas por la IA aparecerán aquí para tu revisión."}
+              </p>
+              <button onClick={() => { loadSession(); loadHistory(); }}
+                className="mt-5 flex items-center gap-2 px-4 py-2 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 transition">
+                <RefreshCw className="w-4 h-4" />
+                {locale === "en" ? "Refresh" : "Actualizar"}
+              </button>
+            </motion.div>
+          )}
+
           {/* ──────────────── REVIEW VIEW ──────────────── */}
-          {view === "review" && (
+          {view === "review" && !loading && session && (
             <motion.div key="review" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="p-6 space-y-6 max-w-none">
 
@@ -658,7 +784,7 @@ export default function MeetActionView() {
                       {locale === "en" ? "Approve all pending" : "Aprobar todas pendientes"}
                     </button>
                     <button
-                      onClick={() => setSession((s) => ({ ...s, items: s.items.map((i) => ({ ...i, status: "pending" })) }))}
+                      onClick={resetReview}
                       className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-100 transition-colors">
                       <RefreshCw className="w-4 h-4" />
                       {locale === "en" ? "Reset all" : "Reiniciar revisión"}
@@ -814,10 +940,18 @@ export default function MeetActionView() {
                 </div>
               </div>
 
-              {/* Group by meeting */}
-              {["Sprint Planning S22", "Kickoff Q2", "Bug triage semanal", "Design Review v2.1"].map((meetingName) => {
-                const entries = history.filter((h) => h.meeting_name === meetingName);
-                if (!entries.length) return null;
+              {/* Empty history */}
+              {history.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <History className="w-10 h-10 text-slate-200 mb-3" />
+                  <p className="text-sm text-slate-400">
+                    {locale === "en" ? "No executions yet" : "Aún no hay ejecuciones"}
+                  </p>
+                </div>
+              )}
+
+              {/* Group by meeting (dynamic) */}
+              {historyGroups.map(([meetingName, entries]) => {
                 return (
                   <div key={meetingName} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
                     {/* Meeting header */}

@@ -104,9 +104,22 @@ function handleDeepLink(url: string) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 interface ConnectionData {
-  token:       string
-  user:        { id: string; name: string; email: string; avatar: string | null }
-  connectedAt: string
+  token:        string
+  accessToken?: string                 // bearer token for /api/desktop/* requests
+  user:         { id: string; name: string; email: string; avatar: string | null }
+  connectedAt:  string
+}
+
+/** Read the persisted bearer token (or null if not connected). */
+function readAccessToken(): string | null {
+  try {
+    const file = connectionFile()
+    if (!fs.existsSync(file)) return null
+    const conn = JSON.parse(fs.readFileSync(file, 'utf-8')) as ConnectionData
+    return conn.accessToken ?? null
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -335,6 +348,47 @@ function registerIpcHandlers(): void {
       return { ok: res.ok, status: res.status, data }
     } catch (err) {
       return { ok: false, status: 0, data: { error: err instanceof Error ? err.message : 'Error de red' } }
+    }
+  })
+
+  // ── Upload recording to the backend pipeline ──────────────────────────────
+  // Sends the audio as multipart/form-data to /api/desktop/upload with the
+  // stored bearer token. Runs in the main process so Node.js handles the
+  // multipart body and there are no CORS restrictions.
+  ipcMain.handle('upload-recording', async (_e, buffer: ArrayBuffer, filename: string, metadata: Record<string, unknown>) => {
+    const token = readAccessToken()
+    if (!token) return { ok: false, error: 'No hay sesión de desktop. Reconecta tu cuenta.' }
+
+    try {
+      const form = new FormData()
+      form.append('file', new Blob([buffer], { type: 'audio/webm' }), filename)
+      form.append('metadata', JSON.stringify(metadata ?? {}))
+
+      const res  = await fetch(MEETBOX_API_URL + '/api/desktop/upload', {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body:    form,
+      })
+      const data = await res.json().catch(() => ({})) as { job_id?: string; error?: string }
+      if (!res.ok) return { ok: false, error: data.error ?? `Error ${res.status}` }
+      return { ok: true, jobId: data.job_id }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Error de red' }
+    }
+  })
+
+  // ── Poll job status ────────────────────────────────────────────────────────
+  ipcMain.handle('get-job-status', async (_e, jobId: string) => {
+    const token = readAccessToken()
+    if (!token) return { ok: false, error: 'No autenticado' }
+    try {
+      const res  = await fetch(`${MEETBOX_API_URL}/api/desktop/jobs/${jobId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => ({}))
+      return { ok: res.ok, ...data }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Error de red' }
     }
   })
 }

@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { createHash, createDecipheriv } from "crypto";
+import { mintDesktopToken } from "@/lib/desktop-auth";
 
 // Electron renders from file:// or localhost:5173 (dev). Chromium enforces
 // CORS, so we must include these headers on EVERY response — including errors.
@@ -57,6 +58,12 @@ export async function OPTIONS() {
 export async function POST(req: NextRequest) {
   const body  = await req.json().catch(() => ({}));
   const token = String(body.token ?? "").trim().toUpperCase();
+  // Optional device fingerprint sent by the desktop client for the sessions list.
+  const deviceMeta = {
+    device_label: typeof body.device_label === "string" ? body.device_label : undefined,
+    platform:     typeof body.platform === "string" ? body.platform : undefined,
+    app_version:  typeof body.app_version === "string" ? body.app_version : undefined,
+  };
 
   if (!/^MBOX-[0-9A-F]{32}$/.test(token)) {
     return NextResponse.json(
@@ -86,8 +93,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Mint a long-lived, revocable bearer token for the desktop session. The
+  // short MBOX code is only an exchange credential; this token authenticates
+  // every subsequent /api/desktop/* request (uploads, job polling, etc.).
+  const minted = await mintDesktopToken(user.id, deviceMeta);
+
   return NextResponse.json(
-    { user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar_url ?? null } },
+    {
+      user:         { id: user.id, name: user.name, email: user.email, avatar: user.avatar_url ?? null },
+      access_token: minted?.raw ?? null,        // store and send as `Authorization: Bearer`
+      expires_at:   minted?.expiresAt ?? null,
+      session_id:   minted?.sessionId ?? null,
+    },
     { headers: CORS },
   );
 }

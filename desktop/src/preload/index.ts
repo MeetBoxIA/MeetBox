@@ -18,9 +18,10 @@ export interface AudioSource {
 // Defined here and re-exported from renderer/src/types.ts to avoid cross-context
 // imports (the renderer cannot import from preload directly in a sandboxed context).
 export interface ConnectionData {
-  token:       string
-  user:        { id: string; name: string; email: string; avatar: string | null }
-  connectedAt: string
+  token:        string
+  accessToken?: string
+  user:         { id: string; name: string; email: string; avatar: string | null }
+  connectedAt:  string
 }
 
 const api = {
@@ -68,6 +69,18 @@ const api = {
   // ── HTTP proxy via Node.js (sin CORS) ─────────────────────────────────────────
   httpPost: (url: string, body: unknown): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> =>
     ipcRenderer.invoke('http-post', url, body),
+
+  // ── Subir grabación al pipeline del backend ──────────────────────────────────
+  uploadRecording: (
+    buffer: ArrayBuffer, filename: string, metadata: Record<string, unknown>,
+  ): Promise<{ ok: boolean; jobId?: string; error?: string }> =>
+    ipcRenderer.invoke('upload-recording', buffer, filename, metadata),
+
+  // ── Consultar estado de un job de procesamiento ──────────────────────────────
+  getJobStatus: (
+    jobId: string,
+  ): Promise<{ ok: boolean; status?: string; progress?: number; session_id?: string | null; error?: string }> =>
+    ipcRenderer.invoke('get-job-status', jobId),
 
   // ── Escuchar eventos desde el main process ────────────────────────────────────
   /**
