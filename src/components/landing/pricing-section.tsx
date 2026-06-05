@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import SplitText from '@/components/ui/split-text';
 
 const plans = [
@@ -18,6 +19,9 @@ const plans = [
     note: 'Requiere plan Por sala para activarse',
     cta: 'Reservar dispositivo',
     highlight: false,
+    // Datos para el pago — precio en COP
+    planId: 'plan_dispositivo',
+    unitPrice: 649900,
   },
   {
     name: 'Por sala',
@@ -34,6 +38,8 @@ const plans = [
     note: null,
     cta: 'Empezar prueba gratis',
     highlight: true,
+    planId: 'plan_sala',
+    unitPrice: 99900,
   },
   {
     name: 'Empresa',
@@ -50,10 +56,48 @@ const plans = [
     note: null,
     cta: 'Hablar con ventas',
     highlight: false,
+    planId: 'plan_empresa',
+    unitPrice: 749900,
   },
 ];
 
 export default function PricingSection() {
+  // Guardamos qué plan está en proceso de pago
+  // null significa que ninguno está cargando
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+
+  // Función que se ejecuta cuando el usuario hace clic en un plan
+  const handlePayment = async (planId: string, title: string, unitPrice: number) => {
+    try {
+      // Marcamos este plan como cargando
+      setLoadingPlan(planId);
+
+      // Llamamos a nuestra API route de Next.js
+      // que a su vez llama al microservicio Spring Boot
+      const response = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId, title, unitPrice }),
+      });
+
+      const data = await response.json();
+
+      if (data.initPoint) {
+        // Redirigimos al usuario a la página de pago de Mercado Pago
+        window.location.href = data.initPoint;
+      } else {
+        alert('Error al procesar el pago, intenta de nuevo');
+      }
+
+    } catch (error) {
+      console.error('Error en el pago:', error);
+      alert('Error de conexión, intenta de nuevo');
+    } finally {
+      // Quitamos el estado de carga sin importar si hubo error o no
+      setLoadingPlan(null);
+    }
+  };
+
   return (
     <section id="precios" className="bg-white pt-20 pb-28 px-4">
       <div className="max-w-6xl mx-auto">
@@ -122,14 +166,20 @@ export default function PricingSection() {
               )}
 
               <button
+                // Deshabilitamos el botón mientras está cargando
+                disabled={loadingPlan === plan.planId}
+                onClick={() => handlePayment(plan.planId, plan.name, plan.unitPrice)}
                 className={[
                   'w-full py-3.5 rounded-full text-sm font-semibold transition',
                   plan.highlight
                     ? 'bg-white text-[#050040] hover:bg-slate-100'
                     : 'bg-[#050040] text-white hover:bg-slate-800',
+                  // Estilo cuando está cargando
+                  loadingPlan === plan.planId ? 'opacity-70 cursor-not-allowed' : '',
                 ].join(' ')}
               >
-                {plan.cta}
+                {/* Mostramos "Procesando..." mientras carga */}
+                {loadingPlan === plan.planId ? 'Procesando...' : plan.cta}
               </button>
             </div>
           ))}
