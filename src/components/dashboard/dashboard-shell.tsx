@@ -24,6 +24,7 @@ import MeetingsView     from "./meetings-view";
 import OnboardingTour  from "./onboarding-tour";
 import MeetyView       from "./meety-view";
 import MeetActionView  from "./meetaction-view";
+import PlansView       from "./plans-view";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface User    { name: string; email: string; image: string | null }
@@ -66,6 +67,7 @@ function getSectionTitles(t: (k: TranslationKey) => string): Record<string, stri
     meety:                    t("section_meety"),
     meetbook:                 t("section_meetbook"),
     meetaction:               "MeetAction · Acciones IA",
+    plans:                    t("section_plans"),
     integrations:             t("section_integrations"),
     "settings-profile":       t("section_settings_profile"),
     "settings-notifications": t("section_settings_notifications"),
@@ -426,8 +428,8 @@ function ThemeToggleBtn() {
   );
 }
 
-function Header({ activeNav, user, onMenuClick, setActiveNav }: {
-  activeNav: string; user: User; onMenuClick: () => void; setActiveNav: (id: string) => void;
+function Header({ activeNav, user, onMenuClick, setActiveNav, isFreePlan }: {
+  activeNav: string; user: User; onMenuClick: () => void; setActiveNav: (id: string) => void; isFreePlan: boolean;
 }) {
   const { t } = useTranslation();
   const [search, setSearch] = React.useState("");
@@ -463,6 +465,17 @@ function Header({ activeNav, user, onMenuClick, setActiveNav }: {
         {!searchOpen && (
           <button onClick={() => setSearchOpen(true)} className="md:hidden p-2 rounded-xl hover:bg-slate-50 transition-colors shrink-0">
             <Search className="w-5 h-5 text-slate-500" />
+          </button>
+        )}
+        {/* Upgrade CTA — always visible while the account is on the free plan */}
+        {isFreePlan && activeNav !== "plans" && (
+          <button
+            onClick={() => setActiveNav("plans")}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white shrink-0 transition-all hover:shadow-md hover:-translate-y-0.5"
+            style={{ background: "linear-gradient(135deg, #050040 0%, #1a1a8c 100%)" }}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            {t("upgrade")}
           </button>
         )}
         {/* Theme toggle */}
@@ -1603,7 +1616,7 @@ function SettingsSecurity() {
 }
 
 // ── Settings: Cuenta ──────────────────────────────────────────────────────────
-function SettingsAccount({ user }: { user: User }) {
+function SettingsAccount({ user, onNavigate }: { user: User; onNavigate: (id: string) => void }) {
   const { t, locale, setLocale } = useTranslation();
   const [confirmDelete, setConfirmDelete] = React.useState("");
   const [showDialog,    setShowDialog]    = React.useState(false);
@@ -1639,7 +1652,8 @@ function SettingsAccount({ user }: { user: User }) {
                 <p className="text-xs text-slate-400">{t("current_plan_desc")}</p>
               </div>
             </div>
-            <button className="px-4 py-2 bg-[#050040] text-white rounded-xl text-xs font-semibold hover:bg-[#050040]/90 transition shadow-sm">
+            <button onClick={() => onNavigate("plans")}
+              className="px-4 py-2 bg-[#050040] text-white rounded-xl text-xs font-semibold hover:bg-[#050040]/90 transition shadow-sm">
               {t("upgrade")}
             </button>
           </div>
@@ -1804,6 +1818,10 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [profile,     setProfile]     = React.useState<Profile>(initialProfile);
 
+  // No paid-subscription field exists in the DB yet, so every account is treated
+  // as free. When billing lands, derive this from the user's subscription row.
+  const isFreePlan = true;
+
   React.useEffect(() => {
     const handler = () => { if (window.innerWidth >= 1024) setSidebarOpen(false); };
     window.addEventListener("resize", handler);
@@ -1820,11 +1838,12 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
       case "meetcalendar":            return <MeetCalendarView />;
       case "meetbook":                return <MeetBookView />;
       case "meetaction":              return <MeetActionView />;
+      case "plans":                   return <PlansView onBack={() => setActiveNav("settings-account")} />;
       case "integrations":            return <IntegrationsView profile={profile} onUpdate={handleProfileUpdate} />;
       case "settings-profile":        return <SettingsProfile user={user} profile={profile} onUpdate={handleProfileUpdate} />;
       case "settings-notifications":  return <SettingsNotifications />;
       case "settings-security":       return <SettingsSecurity />;
-      case "settings-account":        return <SettingsAccount user={user} />;
+      case "settings-account":        return <SettingsAccount user={user} onNavigate={setActiveNav} />;
       case "meetings":                return <MeetingsView />;
       case "rooms":                   return <RoomsView />;
       case "rooms-meetings":          return <RoomsView />;
@@ -1852,7 +1871,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
 
       {/* Main */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <Header activeNav={activeNav} user={user} onMenuClick={() => setSidebarOpen(true)} setActiveNav={setActiveNav} />
+        <Header activeNav={activeNav} user={user} onMenuClick={() => setSidebarOpen(true)} setActiveNav={setActiveNav} isFreePlan={isFreePlan} />
         <main className={cn(
           "flex-1 min-h-0",
           (activeNav === "meetbook" || activeNav === "meetcalendar" || activeNav === "meety" || activeNav === "meetaction")
