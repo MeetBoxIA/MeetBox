@@ -290,7 +290,9 @@ export default function App() {
   // Blob ("fetch failed"). webSecurity is off and the endpoint sends CORS
   // headers, so a direct fetch from the renderer works reliably.
   const uploadToBackend = useCallback(async (buffer: ArrayBuffer, filename: string) => {
-    const conn = connection as ConnectionData   // we're recording → already connected
+    // Read the connection FRESH from disk (not the React state, which may have
+    // been loaded before the token/apiUrl were persisted).
+    const conn = await window.electronAPI.getConnection()
     const apiUrl = conn?.apiUrl ?? 'http://localhost:3000'
     const token  = conn?.accessToken
     if (!token) {
@@ -373,7 +375,7 @@ export default function App() {
       if (Date.now() < deadline) setTimeout(poll, 2000)
     }
     setTimeout(poll, 2000)
-  }, [timerSecs, connection])
+  }, [timerSecs])
 
   const toggleRecording = useCallback(() => {
     if (status === 'idle' || status === 'done' || status === 'error') {
