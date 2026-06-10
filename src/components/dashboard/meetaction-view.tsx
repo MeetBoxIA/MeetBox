@@ -204,19 +204,19 @@ function ActionCard({
           {editing ? (
             <div className="space-y-2">
               <input
-                value={draft.title}
+                value={draft.title ?? ""}
                 onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
                 className="w-full text-sm font-semibold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:border-[#050040]/40"
               />
               <textarea
-                value={draft.description}
+                value={draft.description ?? ""}
                 onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
                 rows={2}
                 className="w-full text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:border-[#050040]/40 resize-none"
               />
               <div className="flex items-center gap-2">
                 <input
-                  value={draft.assignee_name}
+                  value={draft.assignee_name ?? ""}
                   onChange={(e) => setDraft((d) => ({ ...d, assignee_name: e.target.value }))}
                   placeholder="Responsable"
                   className="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:border-[#050040]/40"
