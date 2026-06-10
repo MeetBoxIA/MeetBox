@@ -106,20 +106,34 @@ function handleDeepLink(url: string) {
 interface ConnectionData {
   token:        string
   accessToken?: string                 // bearer token for /api/desktop/* requests
+  apiUrl?:      string                 // base URL that was used to connect
   user:         { id: string; name: string; email: string; avatar: string | null }
   connectedAt:  string
 }
 
-/** Read the persisted bearer token (or null if not connected). */
-function readAccessToken(): string | null {
+/** Read the persisted connection (or null if not connected). */
+function readConnection(): ConnectionData | null {
   try {
     const file = connectionFile()
     if (!fs.existsSync(file)) return null
-    const conn = JSON.parse(fs.readFileSync(file, 'utf-8')) as ConnectionData
-    return conn.accessToken ?? null
+    return JSON.parse(fs.readFileSync(file, 'utf-8')) as ConnectionData
   } catch {
     return null
   }
+}
+
+/** Read the persisted bearer token (or null if not connected). */
+function readAccessToken(): string | null {
+  return readConnection()?.accessToken ?? null
+}
+
+/**
+ * Resolve the backend base URL. Prefers the URL stored at connect time so the
+ * desktop always talks to the same backend it linked to (e.g. localhost:3000 in
+ * dev), falling back to the env var and finally production.
+ */
+function readApiUrl(): string {
+  return readConnection()?.apiUrl ?? MEETBOX_API_URL
 }
 
 /**
@@ -364,7 +378,7 @@ function registerIpcHandlers(): void {
       form.append('file', new Blob([buffer], { type: 'audio/webm' }), filename)
       form.append('metadata', JSON.stringify(metadata ?? {}))
 
-      const res  = await fetch(MEETBOX_API_URL + '/api/desktop/upload', {
+      const res  = await fetch(readApiUrl() + '/api/desktop/upload', {
         method:  'POST',
         headers: { Authorization: `Bearer ${token}` },
         body:    form,
@@ -382,7 +396,7 @@ function registerIpcHandlers(): void {
     const token = readAccessToken()
     if (!token) return { ok: false, error: 'No autenticado' }
     try {
-      const res  = await fetch(`${MEETBOX_API_URL}/api/desktop/jobs/${jobId}`, {
+      const res  = await fetch(`${readApiUrl()}/api/desktop/jobs/${jobId}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json().catch(() => ({}))

@@ -20,6 +20,7 @@ export interface AudioSource {
 export interface ConnectionData {
   token:        string
   accessToken?: string
+  apiUrl?:      string
   user:         { id: string; name: string; email: string; avatar: string | null }
   connectedAt:  string
 }
