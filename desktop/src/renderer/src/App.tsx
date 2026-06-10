@@ -285,7 +285,20 @@ export default function App() {
   }, [stopAudioCapture])
 
   // ── Upload to backend + poll the processing job ─────────────────────────────
+  // The upload runs in the RENDERER using Chromium's fetch (not the main
+  // process / undici), because undici fails to send multipart FormData with a
+  // Blob ("fetch failed"). webSecurity is off and the endpoint sends CORS
+  // headers, so a direct fetch from the renderer works reliably.
   const uploadToBackend = useCallback(async (buffer: ArrayBuffer, filename: string) => {
+    const conn = connection as ConnectionData   // we're recording → already connected
+    const apiUrl = conn?.apiUrl ?? 'http://localhost:3000'
+    const token  = conn?.accessToken
+    if (!token) {
+      setUploadState('error')
+      setJobStage('No hay sesión de desktop. Reconecta tu cuenta.')
+      return
+    }
+
     setUploadState('uploading')
     setJobProgress(0)
     setJobStage('Subiendo grabación…')
@@ -298,16 +311,32 @@ export default function App() {
       timezone:         Intl.DateTimeFormat().resolvedOptions().timeZone,
     }
 
-    const res = await window.electronAPI.uploadRecording(buffer, filename, meta)
-    if (!res.ok || !res.jobId) {
+    let jobId: string
+    try {
+      const form = new FormData()
+      form.append('file', new Blob([buffer], { type: 'audio/webm' }), filename)
+      form.append('metadata', JSON.stringify(meta))
+
+      const res = await fetch(`${apiUrl}/api/desktop/upload`, {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${token}` },   // no Content-Type: browser sets the boundary
+        body:    form,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.job_id) {
+        setUploadState('error')
+        setJobStage(data.error ?? `Error ${res.status} al subir la grabación`)
+        return
+      }
+      jobId = data.job_id
+    } catch (err) {
       setUploadState('error')
-      setJobStage(res.error ?? 'Error al subir la grabación')
+      setJobStage('Error de red al subir: ' + (err instanceof Error ? err.message : String(err)))
       return
     }
 
     // Poll the job status until it completes or fails (max ~5 min).
     setUploadState('processing')
-    const jobId = res.jobId
     const stageLabels: Record<string, string> = {
       uploaded:          'En cola…',
       queued:            'En cola…',
@@ -321,25 +350,30 @@ export default function App() {
 
     const deadline = Date.now() + 5 * 60_000
     const poll = async (): Promise<void> => {
-      const s = await window.electronAPI.getJobStatus(jobId)
-      if (s.ok && s.status) {
-        setJobProgress(s.progress ?? 0)
-        setJobStage(stageLabels[s.status] ?? s.status)
-        if (s.status === 'completed') {
-          setUploadState('done')
-          setJobSessionId(s.session_id ?? null)
-          return
+      try {
+        const r = await fetch(`${apiUrl}/api/desktop/jobs/${jobId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const s = await r.json().catch(() => ({}))
+        if (r.ok && s.status) {
+          setJobProgress(s.progress ?? 0)
+          setJobStage(stageLabels[s.status] ?? s.status)
+          if (s.status === 'completed') {
+            setUploadState('done')
+            setJobSessionId(s.session_id ?? null)
+            return
+          }
+          if (s.status === 'failed') {
+            setUploadState('error')
+            setJobStage(s.error ?? 'El procesamiento falló')
+            return
+          }
         }
-        if (s.status === 'failed') {
-          setUploadState('error')
-          setJobStage(s.error ?? 'El procesamiento falló')
-          return
-        }
-      }
+      } catch { /* transient — keep polling */ }
       if (Date.now() < deadline) setTimeout(poll, 2000)
     }
     setTimeout(poll, 2000)
-  }, [timerSecs])
+  }, [timerSecs, connection])
 
   const toggleRecording = useCallback(() => {
     if (status === 'idle' || status === 'done' || status === 'error') {
