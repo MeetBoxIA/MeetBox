@@ -23,7 +23,7 @@ const PLANS = [
     unitPrice: 99900,
     icon:      Zap,
     color:     "#050040",
-    highlight: true,
+    highlight: false,
     description: "Cubre una sala completa — presencial con el hardware y videollamadas con el Desktop.",
     features: [
       "MeetBox Desktop incluido (Win & Mac)",
@@ -88,6 +88,7 @@ export default function PlansView({ onBack }: { onBack: () => void }) {
       });
       const data = await res.json();
       if (data.initPoint) {
+        localStorage.setItem('meetbox_plan', JSON.stringify({ id: planId, name: title }));
         window.location.href = data.initPoint;   // off to Mercado Pago
       } else {
         setError(data.error ?? (locale === "en" ? "Could not start checkout. Try again." : "No se pudo iniciar el pago. Intenta de nuevo."));
@@ -138,30 +139,25 @@ export default function PlansView({ onBack }: { onBack: () => void }) {
           return (
             <div key={plan.id}
               className={cn(
-                "relative bg-white rounded-2xl border p-6 flex flex-col transition-all",
-                plan.highlight ? "border-[#050040] shadow-lg shadow-[#050040]/10 md:-translate-y-2" : "border-slate-200 hover:border-slate-300 hover:shadow-md",
+                "relative bg-white rounded-2xl border p-6 flex flex-col transition-all duration-300 group h-full",
+                "border-slate-200 hover:bg-[#050040] hover:border-[#050040] hover:text-white hover:shadow-2xl hover:-translate-y-2",
               )}>
-              {plan.highlight && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] font-bold bg-[#050040] text-white px-3 py-1 rounded-full uppercase tracking-wide">
-                  {locale === "en" ? "Most popular" : "Más popular"}
-                </span>
-              )}
 
               <div className="w-11 h-11 rounded-2xl flex items-center justify-center mb-4"
                 style={{ backgroundColor: plan.color + "15" }}>
-                <Icon className="w-5 h-5" style={{ color: plan.color }} />
+                <Icon className="w-5 h-5 group-hover:text-white" style={{ color: plan.color }} />
               </div>
 
-              <h3 className="text-lg font-bold text-slate-800">{plan.name}</h3>
+              <h3 className="text-lg font-bold text-slate-800 group-hover:text-white">{plan.name}</h3>
               <div className="flex items-end gap-1 mt-1 mb-3">
-                <span className="text-3xl font-bold text-slate-900">{plan.price}</span>
-                <span className="text-sm text-slate-400 mb-1">{plan.period}</span>
+                <span className="text-3xl font-bold text-slate-900 group-hover:text-white">{plan.price}</span>
+                <span className="text-sm text-slate-400 mb-1 group-hover:text-white/70">{plan.period}</span>
               </div>
-              <p className="text-xs text-slate-500 leading-relaxed mb-5">{plan.description}</p>
+              <p className="text-xs text-slate-500 leading-relaxed mb-5 group-hover:text-slate-300">{plan.description}</p>
 
               <ul className="space-y-2.5 mb-6 flex-1">
                 {plan.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-xs text-slate-600">
+                  <li key={f} className="flex items-start gap-2 text-xs text-slate-600 group-hover:text-slate-200">
                     <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
                     {f}
                   </li>
@@ -173,9 +169,7 @@ export default function PlansView({ onBack }: { onBack: () => void }) {
                 disabled={isLoading}
                 className={cn(
                   "w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-60",
-                  plan.highlight
-                    ? "bg-[#050040] text-white hover:bg-[#050040]/90 shadow-md shadow-[#050040]/20"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                  "bg-slate-100 text-slate-700 hover:bg-slate-200 group-hover:bg-white group-hover:text-[#050040] group-hover:hover:bg-slate-100",
                 )}
               >
                 {isLoading

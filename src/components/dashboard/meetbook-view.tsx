@@ -25,6 +25,7 @@ import {
   ListOrdered, Code2, Minus, Type, Bold, Italic, Underline,
   Strikethrough, MessageSquare, Copy, Download, RotateCcw,
 } from "lucide-react";
+import { useNotifications } from "@/lib/notifications";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Notebook { id: string; title: string; emoji: string; created_at: string; updated_at: string; }
@@ -596,6 +597,7 @@ function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
 
 // ── MeetBookView ───────────────────────────────────────────────────────────────
 export default function MeetBookView() {
+  const { addNotification } = useNotifications();
   const [notebooks,    setNotebooks]    = React.useState<Notebook[]>([]);
   const [expanded,     setExpanded]     = React.useState<Set<string>>(new Set());
   const [notesMap,     setNotesMap]     = React.useState<Record<string, Note[] | undefined>>({});
@@ -770,6 +772,7 @@ export default function MeetBookView() {
     openNote(note);
     setMobilePanel("editor");
     setRenamingNote({ id: note.id, val: "Sin título" });
+    addNotification({ title: "Nota creada", description: `La nota "${note.title}" se creó correctamente`, type: "note" });
   }
 
   async function renameNote(noteId: string, notebookId: string, title: string) {

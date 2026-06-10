@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import SplitText from '@/components/ui/split-text';
 
 const plans = [
@@ -62,6 +64,8 @@ const plans = [
 ];
 
 export default function PricingSection() {
+  const { data: session } = useSession();
+  const router = useRouter();
   // Guardamos qué plan está en proceso de pago
   // null significa que ninguno está cargando
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
@@ -98,6 +102,15 @@ export default function PricingSection() {
     }
   };
 
+  const handleReservar = (planId: string, title: string, unitPrice: number) => {
+    if (session) {
+      router.push('/#precios');
+    } else {
+      alert('You cannot purchase without being logged in to MeetBox');
+      router.push('/auth?tab=sign-up');
+    }
+  };
+
   return (
     <section id="precios" className="bg-white pt-20 pb-28 px-4">
       <div className="max-w-6xl mx-auto">
@@ -124,26 +137,24 @@ export default function PricingSection() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start mt-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
           {plans.map((plan) => (
             <div
               key={plan.name}
               className={[
-                'rounded-3xl p-8 border flex flex-col gap-6 transition-all duration-300',
-                plan.highlight
-                  ? 'bg-[#050040] border-[#050040] text-white shadow-2xl md:-mt-4 md:mb-4'
-                  : 'bg-white border-slate-200 text-[#050040] hover:border-slate-300 hover:shadow-md',
+                'rounded-3xl p-8 border flex flex-col gap-6 transition-all duration-300 group h-full',
+                'bg-white border-slate-200 text-[#050040] hover:bg-[#050040] hover:border-[#050040] hover:text-white hover:shadow-2xl hover:-translate-y-2',
               ].join(' ')}
             >
               <div>
-                <p className={`text-xs font-semibold uppercase tracking-widest mb-3 ${plan.highlight ? 'text-slate-400' : 'text-slate-400'}`}>
+                <p className="text-xs font-semibold uppercase tracking-widest mb-3 text-slate-400">
                   {plan.name}
                 </p>
                 <div className="flex items-end gap-1 mb-2">
                   <span className="text-5xl font-bold">{plan.price}</span>
-                  <span className={`text-sm mb-1.5 ${plan.highlight ? 'text-slate-400' : 'text-slate-400'}`}>{plan.period}</span>
+                  <span className="text-sm mb-1.5 text-slate-400">{plan.period}</span>
                 </div>
-                <p className={`text-sm leading-relaxed ${plan.highlight ? 'text-slate-300' : 'text-slate-500'}`}>
+                <p className="text-sm leading-relaxed text-slate-500 group-hover:text-slate-300">
                   {plan.description}
                 </p>
               </div>
@@ -151,16 +162,16 @@ export default function PricingSection() {
               <ul className="space-y-2.5 flex-1">
                 {plan.features.map((f) => (
                   <li key={f} className="flex items-start gap-2.5 text-sm">
-                    <svg className={`w-4 h-4 mt-0.5 flex-shrink-0 ${plan.highlight ? 'text-white' : 'text-[#050040]'}`} viewBox="0 0 16 16" fill="none">
+                    <svg className="w-4 h-4 mt-0.5 flex-shrink-0 text-[#050040] group-hover:text-white" viewBox="0 0 16 16" fill="none">
                       <path d="M3 8l3.5 3.5L13 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
-                    <span className={plan.highlight ? 'text-slate-200' : 'text-slate-600'}>{f}</span>
+                    <span className="text-slate-600 group-hover:text-slate-200">{f}</span>
                   </li>
                 ))}
               </ul>
 
               {plan.note && (
-                <p className={`text-xs rounded-xl px-3 py-2 ${plan.highlight ? 'bg-white/10 text-slate-300' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}>
+                <p className="text-xs rounded-xl px-3 py-2 bg-slate-50 text-slate-400 border border-slate-100 group-hover:bg-white/10 group-hover:text-slate-300 group-hover:border-transparent">
                   {plan.note}
                 </p>
               )}
@@ -168,12 +179,10 @@ export default function PricingSection() {
               <button
                 // Deshabilitamos el botón mientras está cargando
                 disabled={loadingPlan === plan.planId}
-                onClick={() => handlePayment(plan.planId, plan.name, plan.unitPrice)}
+                onClick={() => handleReservar(plan.planId, plan.name, plan.unitPrice)}
                 className={[
                   'w-full py-3.5 rounded-full text-sm font-semibold transition',
-                  plan.highlight
-                    ? 'bg-white text-[#050040] hover:bg-slate-100'
-                    : 'bg-[#050040] text-white hover:bg-slate-800',
+                  'bg-[#050040] text-white hover:bg-slate-800 group-hover:bg-white group-hover:text-[#050040] group-hover:hover:bg-slate-100',
                   // Estilo cuando está cargando
                   loadingPlan === plan.planId ? 'opacity-70 cursor-not-allowed' : '',
                 ].join(' ')}

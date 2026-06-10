@@ -21,6 +21,7 @@ import {
   ArrowLeft, ArrowRight, Sparkles, Pencil, Repeat,
 } from "lucide-react";
 import { SiGooglecalendar, SiApple } from "react-icons/si";
+import { useNotifications } from "@/lib/notifications";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type EventType = "meeting" | "event" | "reminder";
@@ -1226,6 +1227,7 @@ function ShareModal({ onClose }: { onClose: () => void }) {
 
 // ── MeetCalendarView ───────────────────────────────────────────────────────────
 export default function MeetCalendarView() {
+  const { addNotification } = useNotifications();
   const today = React.useMemo(() => new Date(), []);
 
   const [view,        setView]        = React.useState<CalView>("month");
@@ -1435,6 +1437,7 @@ export default function MeetCalendarView() {
       // Recurring events expand into multiple instances on the server, so reload
       if (data.event?.recurrence_freq) await loadEvents();
       else setEvents((prev) => [...prev, data.event]);
+      addNotification({ title: "Evento creado", description: `El evento "${data.event.title}" se creó correctamente`, type: "event" });
     }
     closeModal();
   }
