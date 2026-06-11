@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import SplitText from '@/components/ui/split-text';
 
 const plans = [
@@ -62,12 +64,19 @@ const plans = [
 ];
 
 export default function PricingSection() {
+  const { data: session } = useSession();
+  const router = useRouter();
   // Guardamos qué plan está en proceso de pago
   // null significa que ninguno está cargando
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
 
   // Función que se ejecuta cuando el usuario hace clic en un plan
   const handlePayment = async (planId: string, title: string, unitPrice: number) => {
+    // Comprar requiere una cuenta: sin sesión, llevamos al registro.
+    if (!session) {
+      router.push('/auth?tab=sign-up');
+      return;
+    }
     try {
       // Marcamos este plan como cargando
       setLoadingPlan(planId);

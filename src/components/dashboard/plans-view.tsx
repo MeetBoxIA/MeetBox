@@ -88,6 +88,9 @@ export default function PlansView({ onBack }: { onBack: () => void }) {
       });
       const data = await res.json();
       if (data.initPoint) {
+        // Remember the chosen plan so SettingsAccount can display it after the
+        // Mercado Pago redirect (until real subscriptions land in the DB).
+        localStorage.setItem("meetbox_plan", JSON.stringify({ id: planId, name: title }));
         window.location.href = data.initPoint;   // off to Mercado Pago
       } else {
         setError(data.error ?? (locale === "en" ? "Could not start checkout. Try again." : "No se pudo iniciar el pago. Intenta de nuevo."));

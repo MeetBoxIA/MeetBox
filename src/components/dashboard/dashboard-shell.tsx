@@ -25,6 +25,7 @@ import OnboardingTour  from "./onboarding-tour";
 import MeetyView       from "./meety-view";
 import MeetActionView  from "./meetaction-view";
 import PlansView       from "./plans-view";
+import { NotificationProvider, useNotifications } from "@/lib/notifications";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface User    { name: string; email: string; image: string | null }
@@ -431,10 +432,12 @@ function ThemeToggleBtn() {
 function Header({ activeNav, user, onMenuClick, setActiveNav, isFreePlan }: {
   activeNav: string; user: User; onMenuClick: () => void; setActiveNav: (id: string) => void; isFreePlan: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [search, setSearch] = React.useState("");
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [notifOpen, setNotifOpen] = React.useState(false);
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   return (
     <header className="h-20 bg-white border-b border-slate-100 flex items-center gap-3 px-5 lg:px-8 shrink-0">
       <button onClick={onMenuClick} className="lg:hidden p-2 rounded-xl hover:bg-slate-50 transition-colors shrink-0">
@@ -480,10 +483,79 @@ function Header({ activeNav, user, onMenuClick, setActiveNav, isFreePlan }: {
         )}
         {/* Theme toggle */}
         <ThemeToggleBtn />
-        <button className="relative p-2 rounded-xl hover:bg-slate-50 transition-colors group shrink-0">
-          <Bell className="w-5 h-5 text-slate-500 group-hover:text-slate-800 transition-colors" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#050040] rounded-full border-2 border-white" />
-        </button>
+        <div className="relative shrink-0">
+          <button
+            onClick={() => setNotifOpen((o) => !o)}
+            className="relative p-2 rounded-xl hover:bg-slate-50 transition-colors group shrink-0"
+          >
+            <Bell className="w-5 h-5 text-slate-500 group-hover:text-slate-800 transition-colors" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full border-2 border-white px-1">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {notifOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
+              <div
+                className="absolute right-0 top-full mt-2 z-50 w-80 bg-white rounded-2xl border border-slate-100 shadow-xl overflow-hidden"
+                style={{ animation: "notifPanel 0.16s cubic-bezier(0.16,1,0.3,1) both" }}
+              >
+                <style>{`@keyframes notifPanel{from{opacity:0;transform:scale(0.96) translateY(-6px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
+
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                  <p className="text-sm font-semibold text-slate-800">
+                    {t("nav_notifications")}
+                  </p>
+                  {unreadCount > 0 && (
+                    <button onClick={markAllAsRead}
+                      className="text-xs font-medium text-[#050040] hover:underline">
+                      {locale === "en" ? "Mark all read" : "Marcar leídas"}
+                    </button>
+                  )}
+                </div>
+
+                {/* List */}
+                <div className="max-h-80 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="py-10 text-center">
+                      <Bell className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                      <p className="text-xs text-slate-400">
+                        {locale === "en" ? "No notifications yet" : "Sin notificaciones"}
+                      </p>
+                    </div>
+                  ) : (
+                    notifications.map((n) => (
+                      <button
+                        key={n.id}
+                        onClick={() => markAsRead(n.id)}
+                        className={cn(
+                          "w-full text-left px-4 py-3 flex items-start gap-3 transition-colors hover:bg-slate-50 border-b border-slate-50 last:border-0",
+                          !n.read && "bg-[#050040]/5",
+                        )}
+                      >
+                        <div className={cn(
+                          "w-2 h-2 rounded-full mt-1.5 shrink-0",
+                          n.type === "room" ? "bg-emerald-500" : n.type === "event" ? "bg-violet-500" : n.type === "note" ? "bg-amber-500" : "bg-blue-500",
+                        )} />
+                        <div className="flex-1 min-w-0">
+                          <p className={cn("text-sm", n.read ? "text-slate-600" : "text-slate-800 font-medium")}>{n.title}</p>
+                          <p className="text-xs text-slate-400 mt-0.5 line-clamp-2">{n.description}</p>
+                          <p className="text-[10px] text-slate-300 mt-1">
+                            {n.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
         <div className="hidden sm:block w-px h-6 bg-slate-200 shrink-0" />
         <div className="relative shrink-0">
           <button
@@ -1622,6 +1694,15 @@ function SettingsAccount({ user, onNavigate }: { user: User; onNavigate: (id: st
   const [showDialog,    setShowDialog]    = React.useState(false);
   const [langSaved,     setLangSaved]     = React.useState(false);
 
+  const [currentPlan, setCurrentPlan] = React.useState<{ id: string; name: string } | null>(null);
+
+  React.useEffect(() => {
+    try {
+      const data = localStorage.getItem('meetbox_plan');
+      if (data) setCurrentPlan(JSON.parse(data));
+    } catch {}
+  }, []);
+
   function handleLocale(l: Locale) {
     setLocale(l);
     setLangSaved(true);
@@ -1659,10 +1740,10 @@ function SettingsAccount({ user, onNavigate }: { user: User; onNavigate: (id: st
           </div>
           <div className="flex items-center gap-3 p-4 rounded-xl bg-[#050040]/5 border border-[#050040]/10 mb-4">
             <div className="flex-1">
-              <p className="text-sm font-semibold text-[#050040]">Plan Free</p>
-              <p className="text-xs text-slate-500 mt-0.5">{t("plan_free_desc")}</p>
+              <p className="text-sm font-semibold text-[#050040]">{currentPlan ? currentPlan.name : "Plan Free"}</p>
+              <p className="text-xs text-slate-500 mt-0.5">{currentPlan ? "" : t("plan_free_desc")}</p>
             </div>
-            <span className="text-[10px] font-bold bg-[#050040] text-white px-2.5 py-1 rounded-full uppercase tracking-wide">Free</span>
+            <span className="text-[10px] font-bold bg-[#050040] text-white px-2.5 py-1 rounded-full uppercase tracking-wide">{currentPlan ? currentPlan.name : "Free"}</span>
           </div>
           <div className="grid grid-cols-3 gap-3">
             {[
@@ -1853,6 +1934,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
   }
 
   return (
+    <NotificationProvider>
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* Desktop sidebar */}
       <div className="hidden lg:flex w-72 shrink-0 flex-col border-r border-slate-100">
@@ -1890,5 +1972,6 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
       />
 
     </div>
+    </NotificationProvider>
   );
 }

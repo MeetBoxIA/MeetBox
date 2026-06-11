@@ -16,6 +16,7 @@ import {
   MapPin, DoorOpen, Video, Calendar,
   AlignLeft, Pencil, Mail, Users, ChevronDown, ChevronRight,
 } from "lucide-react";
+import { useNotifications } from "@/lib/notifications";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Room {
@@ -670,6 +671,7 @@ function RoomCard({ room, meetingsToday, onClick }: {
 
 // ── RoomsView ──────────────────────────────────────────────────────────────────
 export default function RoomsView() {
+  const { addNotification } = useNotifications();
   const [rooms,        setRooms]        = React.useState<Room[]>([]);
   const [loading,      setLoading]      = React.useState(true);
   const [selectedRoom, setSelectedRoom] = React.useState<Room | null>(null);
@@ -710,6 +712,7 @@ export default function RoomsView() {
       const d = await res.json();
       setRooms((p) => [...p, d.room]);
       setTodayCounts((p) => ({ ...p, [d.room.id]: 0 }));
+      addNotification({ title: "Sala creada", description: `La sala "${d.room.name}" se creó correctamente`, type: "room" });
     }
     setShowCreate(false);
   }
