@@ -21,8 +21,8 @@ export const OtpSendSchema = z.object({
 });
 
 export const OtpVerifySchema = z.object({
-  email: z.string().email(),
-  otp:   z.string().regex(/^\d{6}$/, "OTP must be 6 digits"),
+  email: z.string().email("Invalid email address"),
+  code:  z.string().regex(/^\d{4}$/, "OTP must be a 4-digit number"),
 });
 
 export const DesktopConnectSchema = z.object({

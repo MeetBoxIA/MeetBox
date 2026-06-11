@@ -1,42 +1,123 @@
 /**
  * In-process OTP store for email verification.
- * Stores one-time codes keyed by email with a 10-minute TTL.
- * Intentionally avoids a DB round-trip — codes are short-lived and
- * don't need to survive a server restart.
  */
 
 declare global {
   // eslint-disable-next-line no-var
-  var __otpStore: Map<string, { code: string; expiresAt: number }> | undefined;
+  var __otpStore:
+    | Map<
+        string,
+        {
+          code: string;
+          expiresAt: number;
+          attempts: number;
+        }
+      >
+    | undefined;
 }
 
-// Attach to globalThis so the same Map instance survives hot-reloads in
-// Next.js dev mode (each hot-reload re-evaluates modules but keeps globals).
-const store: Map<string, { code: string; expiresAt: number }> =
-  globalThis.__otpStore ?? (globalThis.__otpStore = new Map());
+// Keep same Map during hot reloads
+const store: Map<
+  string,
+  {
+    code: string;
+    expiresAt: number;
+    attempts: number;
+  }
+> =
+  globalThis.__otpStore ??
+  (globalThis.__otpStore = new Map());
 
-/** Persist a code for 10 minutes, replacing any prior code for that email. */
+const MAX_ATTEMPTS = 5;
+
+export type OTPCheckResult =
+  | { valid: true; attemptsRemaining: number; maxAttempts: number }
+  | {
+      valid: false;
+      reason: "missing" | "expired" | "invalid" | "locked";
+      attemptsRemaining: number;
+      maxAttempts: number;
+    };
+
+/** Save OTP */
 export function saveOTP(email: string, code: string) {
   store.set(email.toLowerCase(), {
     code,
     expiresAt: Date.now() + 10 * 60 * 1000,
+    attempts: 0,
   });
 }
 
-/**
- * Validate and consume a code.
- * Deletes the entry on both success and expiry to prevent replay attacks.
- * Returns false if no code exists, if it has expired, or if it doesn't match.
- */
-export function checkOTP(email: string, code: string): boolean {
-  const entry = store.get(email.toLowerCase());
-  if (!entry) return false;
-  if (Date.now() > entry.expiresAt) {
-    store.delete(email.toLowerCase());
-    return false;
+/** Validate OTP */
+export function checkOTP(
+  email: string,
+  code: string
+): OTPCheckResult {
+
+  const normalizedEmail = email.toLowerCase();
+
+  const entry = store.get(normalizedEmail);
+
+  if (!entry) {
+    return {
+      valid: false,
+      reason: "missing",
+      attemptsRemaining: 0,
+      maxAttempts: MAX_ATTEMPTS,
+    };
   }
-  if (entry.code !== code) return false;
-  // Single-use: delete immediately after successful verification
-  store.delete(email.toLowerCase());
-  return true;
+
+  // Expired
+  if (Date.now() > entry.expiresAt) {
+    store.delete(normalizedEmail);
+    return {
+      valid: false,
+      reason: "expired",
+      attemptsRemaining: 0,
+      maxAttempts: MAX_ATTEMPTS,
+    };
+  }
+
+  // Too many attempts
+  if (entry.attempts >= MAX_ATTEMPTS) {
+    store.delete(normalizedEmail);
+    return {
+      valid: false,
+      reason: "locked",
+      attemptsRemaining: 0,
+      maxAttempts: MAX_ATTEMPTS,
+    };
+  }
+
+  // Wrong code
+  if (entry.code !== code) {
+    entry.attempts++;
+    const attemptsRemaining = Math.max(MAX_ATTEMPTS - entry.attempts, 0);
+
+    if (attemptsRemaining === 0) {
+      store.delete(normalizedEmail);
+      return {
+        valid: false,
+        reason: "locked",
+        attemptsRemaining,
+        maxAttempts: MAX_ATTEMPTS,
+      };
+    }
+
+    return {
+      valid: false,
+      reason: "invalid",
+      attemptsRemaining,
+      maxAttempts: MAX_ATTEMPTS,
+    };
+  }
+
+  // Correct code
+  store.delete(normalizedEmail);
+
+  return {
+    valid: true,
+    attemptsRemaining: MAX_ATTEMPTS - entry.attempts,
+    maxAttempts: MAX_ATTEMPTS,
+  };
 }

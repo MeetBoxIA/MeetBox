@@ -137,13 +137,16 @@
 .dark .divide-slate-50  > :not([hidden]) ~ :not([hidden]) { border-color: var(--mb-border-sm); }
 
 /* ── Text ── */
+/* Scale recalibrated for readability: secondary text must stay ≥4:1 contrast
+   on --mb-bg-card. The old #475569/#334155 values were nearly invisible. */
 .dark .text-slate-900 { color: #f8fafc !important; }
 .dark .text-slate-800 { color: var(--mb-text-1) !important; }
 .dark .text-slate-700 { color: var(--mb-text-2) !important; }
 .dark .text-slate-600 { color: var(--mb-text-3) !important; }
-.dark .text-slate-500 { color: var(--mb-text-4) !important; }
-.dark .text-slate-400 { color: #475569 !important; }
-.dark .text-slate-300 { color: #334155 !important; }
+.dark .text-slate-500 { color: #8a99b8 !important; }
+.dark .text-slate-400 { color: #7385a6 !important; }
+.dark .text-slate-300 { color: #5a6a88 !important; }
+.dark .text-slate-200 { color: #3d4a63 !important; }
 
 /* Brand text */
 .dark .text-\[\#050040\] { color: var(--mb-brand) !important; }
@@ -175,13 +178,40 @@
 .dark .bg-red-500 { background-color: #dc2626 !important; }
 .dark .hover\:bg-red-600:hover { background-color: #b91c1c !important; }
 .dark .text-red-600 { color: #fca5a5 !important; }
-.dark .hover\:bg-red-50 { background-color: rgba(127,29,29,0.2) !important; }
+.dark .text-red-700 { color: #fca5a5 !important; }
+.dark .text-red-500 { color: #f87171 !important; }
+/* Static red surfaces (error banners, danger zone) — without these, the
+   light-pink bg stayed in dark mode and the overridden pink text vanished on it */
+.dark .bg-red-50  { background-color: rgba(127,29,29,0.2) !important; }
+.dark .border-red-100 { border-color: rgba(127,29,29,0.35) !important; }
 .dark .border-red-200 { border-color: rgba(127,29,29,0.4) !important; }
+.dark .hover\:bg-red-100:hover { background-color: rgba(127,29,29,0.3) !important; }
 
 /* Green states */
 .dark .bg-green-50  { background-color: rgba(6,78,59,0.25) !important; }
 .dark .text-green-700 { color: #6ee7b7 !important; }
 .dark .border-green-200 { border-color: rgba(6,78,59,0.4) !important; }
+
+/* Emerald states (Connected badges, success banners, MeetAction approvals) */
+.dark .bg-emerald-50  { background-color: rgba(6,78,59,0.25) !important; }
+.dark .bg-emerald-100 { background-color: rgba(6,78,59,0.35) !important; }
+.dark .text-emerald-600 { color: #34d399 !important; }
+.dark .text-emerald-700 { color: #6ee7b7 !important; }
+.dark .text-emerald-800 { color: #a7f3d0 !important; }
+.dark .border-emerald-100 { border-color: rgba(6,78,59,0.3) !important; }
+.dark .border-emerald-200 { border-color: rgba(6,78,59,0.45) !important; }
+.dark .hover\:bg-emerald-100:hover { background-color: rgba(6,78,59,0.4) !important; }
+
+/* Amber states (warnings, pending) */
+.dark .bg-amber-50  { background-color: rgba(120,53,15,0.25) !important; }
+.dark .text-amber-600 { color: #fbbf24 !important; }
+.dark .text-amber-700 { color: #fcd34d !important; }
+.dark .border-amber-200 { border-color: rgba(120,53,15,0.45) !important; }
+
+/* Blue states (in-progress indicators) */
+.dark .bg-blue-50  { background-color: rgba(30,58,138,0.3) !important; }
+.dark .text-blue-500 { color: #93c5fd !important; }
+.dark .text-blue-600 { color: #93c5fd !important; }
 
 /* Purple/violet */
 .dark .bg-violet-50  { background-color: rgba(76,29,149,0.2) !important; }
