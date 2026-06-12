@@ -1,17 +1,7 @@
-/**
- * POST /api/meetaction/sessions/[id]/execute
- *
- * Triggers execution of all approved action items in a session.
- * Creates an execution record, then dispatches each item to its destination.
- * In production this would be a background job; here it runs synchronously
- * for simplicity but the client polls the execution status.
- *
- * The actual dispatch to Jira/Slack/Notion/etc. is handled by destination-
- * specific adapters (currently stubbed — integration backends are pending).
- */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/../auth";
 import { getSupabase } from "@/lib/supabase";
+import { JiraService } from "@/lib/services/jira-service";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -20,21 +10,56 @@ async function resolveUserId(email: string) {
   return data?.id as string | null;
 }
 
-// Stub dispatcher — replace each case with real integration calls
-async function dispatchItem(item: Record<string, unknown>): Promise<{ ok: boolean; external_id?: string; external_url?: string; error?: string }> {
-  // Simulate network latency per destination
-  await new Promise((r) => setTimeout(r, 300 + Math.random() * 700));
+// Dispatcher — routes each action item to its destination service
+async function dispatchItem(
+  item: Record<string, unknown>,
+  userId: string,
+): Promise<{ ok: boolean; external_id?: string; external_url?: string; error?: string }> {
 
   switch (item.destination) {
+    // ── Jira: real integration via OAuth tokens ──────────────────────────
+    case "jira": {
+      const creds = await JiraService.getCredentials(userId);
+      if (!creds) return { ok: false, error: "Jira no conectado. Conecta tu cuenta desde Integraciones." };
+
+      // Determine project key: use item metadata or fall back to first available project
+      let projectKey = item.project_key as string | undefined;
+      if (!projectKey) {
+        const projects = await JiraService.getProjects(userId);
+        if (projects.length === 0) return { ok: false, error: "No se encontraron proyectos en Jira" };
+        projectKey = projects[0].key;
+      }
+
+      // Map MeetAction priority to Jira priority
+      const priorityMap: Record<string, string> = {
+        low: "Low", medium: "Medium", high: "High", critical: "Highest",
+      };
+
+      const result = await JiraService.createIssue(userId, {
+        projectKey,
+        summary:     String(item.title ?? "Tarea de MeetBox"),
+        description: String(item.description ?? ""),
+        issueType:   "Task",
+        priority:    priorityMap[String(item.priority ?? "medium")] ?? "Medium",
+        labels:      ["meetbox"],
+      });
+
+      if (!result) return { ok: false, error: "Error al crear issue en Jira" };
+      return { ok: true, external_id: result.key, external_url: result.url };
+    }
+
+    // ── Internal destinations ────────────────────────────────────────────
     case "meetbook":
     case "meetcalendar":
-      // Internal destinations: handled via existing API routes
       return { ok: true, external_id: `internal-${Date.now()}`, external_url: "/dashboard" };
+
+    // ── Other external integrations: stub pending real OAuth + API calls ─
     default:
-      // External integrations: stub pending real OAuth + API calls
+      await new Promise((r) => setTimeout(r, 300 + Math.random() * 700));
       return { ok: true, external_id: `stub-${Date.now()}`, external_url: "#" };
   }
 }
+
 
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await auth();
@@ -95,7 +120,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       .update({ status: "executing", updated_at: new Date().toISOString() })
       .eq("id", item.id);
 
-    const result = await dispatchItem(item as Record<string, unknown>);
+    const result = await dispatchItem(item as Record<string, unknown>, userId);
 
     if (result.ok) {
       executedCount++;
