@@ -64,10 +64,7 @@ export default function ConnectScreen({ onConnected }: ConnectScreenProps) {
       const userData = data.user as ConnectionData['user']
       const connection: ConnectionData = {
         token:       normalized,
-        // Long-lived bearer token used for every /api/desktop/* request.
         accessToken: (data.access_token as string) ?? undefined,
-        // Remember the backend we linked to so uploads/job-polling hit the same
-        // host (e.g. localhost:3000 in dev, not the production default).
         apiUrl:      MEETBOX_API,
         user:        userData,
         connectedAt: new Date().toISOString(),
