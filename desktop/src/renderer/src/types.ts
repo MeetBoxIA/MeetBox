@@ -4,6 +4,7 @@
 export interface ConnectionData {
   token:        string                 // short MBOX exchange code
   accessToken?: string                 // long-lived bearer token for /api/desktop/*
+  apiUrl?:      string                 // backend base URL used at connect time
   user:         { id: string; name: string; email: string; avatar: string | null }
   connectedAt:  string
 }

@@ -72,6 +72,11 @@ export default function PricingSection() {
 
   // Función que se ejecuta cuando el usuario hace clic en un plan
   const handlePayment = async (planId: string, title: string, unitPrice: number) => {
+    // Comprar requiere una cuenta: sin sesión, llevamos al registro.
+    if (!session) {
+      router.push('/auth?tab=sign-up');
+      return;
+    }
     try {
       // Marcamos este plan como cargando
       setLoadingPlan(planId);

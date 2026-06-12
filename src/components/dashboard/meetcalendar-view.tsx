@@ -45,6 +45,11 @@ interface CalEvent {
   recurrence_freq?:  RecurrenceFreq | null;
   recurrence_days?:  number[] | null;
   recurrence_until?: string  | null;
+  // Zoom
+  zoom_meeting_id?: string | null;
+  zoom_join_url?:   string | null;
+  zoom_status?:     string | null;
+  with_zoom?:       boolean;
 }
 
 interface EventFormData {
@@ -65,6 +70,8 @@ interface EventFormData {
   recurrence_freq:  RecurrenceFreq;
   recurrence_days:  number[];     // 0=Mon … 6=Sun, only used when freq === "weekly"
   recurrence_until: string;       // "" = never, else "YYYY-MM-DD"
+  // Zoom
+  with_zoom:      boolean;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -164,6 +171,7 @@ function formDefaults(type: EventType, dateOrTime?: Date): EventFormData {
     color: TYPE_META[type].color,
     notify: false, notify_minutes: 15, notify_email: false,
     recurrence_freq: "none", recurrence_days: [], recurrence_until: "",
+    with_zoom: type === "meeting",
   };
 }
 function eventToForm(ev: CalEvent): EventFormData {
@@ -186,6 +194,7 @@ function eventToForm(ev: CalEvent): EventFormData {
     recurrence_freq:  ev.recurrence_freq ?? "none",
     recurrence_days:  ev.recurrence_days ?? [],
     recurrence_until: ev.recurrence_until ? ev.recurrence_until.split("T")[0] : "",
+    with_zoom:        ev.zoom_meeting_id ? true : false,
   };
 }
 /**
@@ -233,6 +242,7 @@ function formToPayload(f: EventFormData): Omit<CalEvent, "id" | "google_event_id
     recurrence_freq:  isRec ? f.recurrence_freq : null,
     recurrence_days:  recDays,
     recurrence_until: recUntil,
+    with_zoom:        f.with_zoom,
   };
 }
 
@@ -719,6 +729,33 @@ function EventModal({ editing, defaults, onSave, onDelete, onClose }: ModalProps
                     </div>
                   )}
                 </div>
+
+                {/* Zoom toggle */}
+                {form.type === "meeting" && !form.all_day && !form.recurrence_freq && (
+                  <div className={cn(
+                    "rounded-2xl border-2 p-4 transition-all",
+                    form.with_zoom ? "bg-white border-slate-200" : "bg-slate-50 border-slate-100",
+                  )}>
+                    <button onClick={() => set("with_zoom", !form.with_zoom)}
+                      className="w-full flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <Video className="w-4 h-4 text-slate-400" />Reunión Zoom
+                      </span>
+                      <div className={cn(
+                        "relative rounded-full transition-colors shrink-0",
+                        form.with_zoom ? "bg-[#050040]" : "bg-slate-300",
+                      )} style={{ width: 36, height: 20 }}>
+                        <span className={cn(
+                          "absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200",
+                          form.with_zoom ? "translate-x-[18px]" : "translate-x-0.5",
+                        )} />
+                      </div>
+                    </button>
+                    {form.with_zoom && (
+                      <p className="text-xs text-slate-400 mt-2">Se creará una reunión de Zoom automáticamente.</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

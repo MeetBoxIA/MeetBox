@@ -3,10 +3,7 @@
   "version": "1.0.0",
   "description": "MeetBox Desktop — Captura audio de tus videollamadas sin bots",
   "main": "out/main/index.js",
-  "author": {
-    "name": "MeetBox",
-    "email": "hola@meetbox.io"
-  },
+  "author": "MeetBox <hola@meetbox.io>",
   "homepage": "https://meetbox.io",
   "scripts": {
     "dev": "electron-vite dev -- --no-sandbox",
@@ -31,15 +28,18 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8",
-    "electron-vite": "^2.3.0",
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
     "lucide-react": "^1.17.0",
     "postcss": "^8.4.49",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
-    "vite": "^5.4.11"
-  }
+    "vite": "^8.0.16"
+  },
+  "keywords": [],
+  "license": "ISC",
+  "type": "commonjs"
 }

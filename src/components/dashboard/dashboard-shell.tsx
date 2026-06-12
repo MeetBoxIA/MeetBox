@@ -1103,6 +1103,9 @@ function DesktopTokenCard() {
 }
 
 // ── Integrations view ─────────────────────────────────────────────────────────
+// IDs that have real OAuth flows (not just profile toggles)
+const OAUTH_INTEGRATIONS = new Set(["jira", "gcal"]);
+
 function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (p: Partial<Profile>) => void }) {
   const { t } = useTranslation();
   const [connected, setConnected] = React.useState<string[]>(profile.integrations);
@@ -1112,7 +1115,94 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
     profile.integrations.filter((id) => !INTEGRATION_LIST.find((x) => x.id === id)),
   );
 
+  // ── OAuth status tracking ─────────────────────────────────────────────────
+  const [jiraConnected,  setJiraConnected]  = React.useState(false);
+  const [jiraSiteUrl,    setJiraSiteUrl]    = React.useState<string | null>(null);
+  const [gcalConnected,  setGcalConnected]  = React.useState(false);
+  const [toast, setToast] = React.useState<{ msg: string; type: "success" | "error" | "info" } | null>(null);
+
+  // Check OAuth statuses on mount + handle URL query params for toasts
+  React.useEffect(() => {
+    fetch("/api/auth/jira/status")
+      .then((r) => r.ok ? r.json() : { connected: false })
+      .then((d: { connected: boolean; site_url?: string }) => {
+        setJiraConnected(d.connected);
+        setJiraSiteUrl(d.site_url ?? null);
+      })
+      .catch(() => {});
+
+    // Handle query params from OAuth callbacks
+    const params = new URLSearchParams(window.location.search);
+    const jiraStatus = params.get("jira");
+    const gcalStatus = params.get("gcal");
+    if (jiraStatus === "connected") {
+      setToast({ msg: "¡Jira conectado exitosamente!", type: "success" });
+      setJiraConnected(true);
+    } else if (jiraStatus === "denied") {
+      setToast({ msg: "Autorización de Jira denegada", type: "error" });
+    } else if (jiraStatus === "error") {
+      setToast({ msg: "Error al conectar Jira", type: "error" });
+    }
+    if (gcalStatus === "connected") {
+      setToast({ msg: "¡Google Calendar conectado!", type: "success" });
+      setGcalConnected(true);
+    }
+    // Clean URL params
+    if (jiraStatus || gcalStatus) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("jira");
+      url.searchParams.delete("gcal");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
+
+  // Auto-dismiss toast
+  React.useEffect(() => {
+    if (toast) { const t = setTimeout(() => setToast(null), 4000); return () => clearTimeout(t); }
+  }, [toast]);
+
+  function isOAuthConnected(id: string): boolean {
+    if (id === "jira") return jiraConnected;
+    if (id === "gcal") return gcalConnected;
+    return connected.includes(id);
+  }
+
+  async function handleConnect(id: string) {
+    if (id === "jira")  { window.location.href = "/api/auth/jira"; return; }
+    if (id === "gcal")  { window.location.href = "/api/auth/google-calendar"; return; }
+    await toggle(id);
+  }
+
+  async function handleDisconnect(id: string) {
+    if (id === "jira") {
+      setSaving(id);
+      await fetch("/api/auth/jira/status", { method: "DELETE" });
+      setJiraConnected(false); setJiraSiteUrl(null);
+      setSaving(null);
+      setToast({ msg: "Jira desconectado", type: "info" });
+      return;
+    }
+    await toggle(id);
+  }
+
   async function toggle(id: string) {
+    // Slack uses a REAL OAuth flow: connecting redirects to Slack's authorize
+    // screen; disconnecting revokes the token server-side. The callback updates
+    // user_profiles.integrations, so on return the card shows as connected.
+    if (id === "slack") {
+      if (!connected.includes("slack")) {
+        window.location.href = "/api/integrations/slack/connect";
+        return;
+      }
+      setSaving(id);
+      await fetch("/api/integrations/slack", { method: "DELETE" });
+      const next = connected.filter((x) => x !== "slack");
+      setConnected(next);
+      onUpdate({ integrations: next });
+      setSaving(null);
+      return;
+    }
+
     const next = connected.includes(id) ? connected.filter((x) => x !== id) : [...connected, id];
     setSaving(id);
     await fetch("/api/user/profile", {
@@ -1150,10 +1240,28 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
     onUpdate({ integrations: [...connected, ...next] });
   }
 
-  const connectedCount = connected.length + customList.length;
+  const connectedCount = INTEGRATION_LIST.filter((i) => isOAuthConnected(i.id)).length + customList.length;
 
   return (
     <div className="space-y-8">
+
+      {/* ── Toast notification ── */}
+      {toast && (
+        <div
+          className={cn(
+            "fixed top-6 right-6 z-[100] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl border text-sm font-semibold",
+            toast.type === "success" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+            toast.type === "error"   ? "bg-red-50 text-red-600 border-red-200" :
+                                       "bg-slate-50 text-slate-600 border-slate-200",
+          )}
+          style={{ animation: "slideIn 0.3s ease-out" }}
+        >
+          {toast.type === "success" && <CheckCircle2 className="w-4 h-4" />}
+          {toast.msg}
+          <button onClick={() => setToast(null)} className="ml-2 opacity-50 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
+        </div>
+      )}
+      <style>{`@keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}`}</style>
 
       {/* ── Page header ── */}
       <div className="flex items-end justify-between">
@@ -1179,12 +1287,13 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {INTEGRATION_LIST.map(({ id, label, color, Icon, desc }) => {
-            const isConnected = connected.includes(id);
-            const isLoading   = saving === id;
+            const isConn    = isOAuthConnected(id);
+            const isLoading = saving === id;
+            const isOAuth   = OAUTH_INTEGRATIONS.has(id);
             return (
               <div key={id} className={cn(
                 "group bg-white rounded-2xl border p-5 flex flex-col gap-4 transition-all hover:shadow-md",
-                isConnected ? "border-[#050040]/20 shadow-sm" : "border-slate-100",
+                isConn ? "border-[#050040]/20 shadow-sm" : "border-slate-100",
               )}>
                 {/* Card header */}
                 <div className="flex items-start justify-between">
@@ -1194,7 +1303,7 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
                   >
                     <Icon style={{ color }} className="w-6 h-6" />
                   </div>
-                  {isConnected && (
+                  {isConn && (
                     <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-full shrink-0">
                       <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
                       {t("connected")}
@@ -1205,21 +1314,28 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-slate-800">{label}</p>
                   <p className="text-xs text-slate-400 mt-1 leading-relaxed">{desc}</p>
+                  {/* Show Jira site URL when connected */}
+                  {id === "jira" && isConn && jiraSiteUrl && (
+                    <p className="text-[10px] text-[#0052CC] mt-1.5 font-medium truncate flex items-center gap-1">
+                      <Globe className="w-3 h-3 shrink-0" />
+                      {jiraSiteUrl.replace(/^https?:\/\//, "")}
+                    </p>
+                  )}
                 </div>
                 {/* Action */}
                 <button
-                  onClick={() => toggle(id)}
+                  onClick={() => isConn ? handleDisconnect(id) : handleConnect(id)}
                   disabled={isLoading}
                   className={cn(
                     "w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all disabled:opacity-50",
-                    isConnected
+                    isConn
                       ? "bg-red-50 text-red-600 hover:bg-red-100 border border-red-100"
                       : "bg-[#050040] text-white hover:bg-[#050040]/90",
                   )}
                 >
-                  {isLoading ? "…" : isConnected
+                  {isLoading ? "…" : isConn
                     ? <><Zap className="w-3.5 h-3.5" />{t("disconnect")}</>
-                    : <><Link2 className="w-3.5 h-3.5" />{t("connect")}</>
+                    : <><Link2 className="w-3.5 h-3.5" />{isOAuth ? `${t("connect")} ${label}` : t("connect")}</>
                   }
                 </button>
               </div>

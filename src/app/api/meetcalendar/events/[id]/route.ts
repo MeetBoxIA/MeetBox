@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/../auth";
 import { getSupabase } from "@/lib/supabase";
 import { sendEmail } from "@/lib/email";
+import { ZoomService } from "@/lib/services/zoom-service";
 
 type UserRow = { id: string; email: string; name: string; google_access_token: string | null };
 
@@ -86,6 +87,28 @@ export async function PATCH(
     await patchGcal(user.google_access_token, data.google_event_id, patch);
   }
 
+  // Mirror change in Zoom if meeting exists
+  if (data.zoom_meeting_id) {
+    const zoomPatch: Record<string, unknown> = {};
+    if (patch.title !== undefined) zoomPatch.topic = patch.title;
+    if (patch.start_at !== undefined) {
+      zoomPatch.start_time = patch.start_at;
+      if (patch.end_at !== undefined) {
+        zoomPatch.duration_minutes = Math.max(1, Math.round(
+          (new Date(String(patch.end_at)).getTime() - new Date(String(patch.start_at)).getTime()) / 60000
+        ));
+      }
+    }
+    if (patch.description !== undefined) zoomPatch.agenda = patch.description;
+    if (Object.keys(zoomPatch).length > 0) {
+      try {
+        await ZoomService.updateMeeting(Number(data.zoom_meeting_id), zoomPatch);
+      } catch (err) {
+        console.error("[Zoom] Failed to update meeting:", err);
+      }
+    }
+  }
+
   return NextResponse.json({ event: data });
 }
 
@@ -101,10 +124,10 @@ export async function DELETE(
 
   const { id } = await params;
 
-  // Fetch event to get google_event_id before deleting
+  // Fetch event to get google_event_id and zoom_meeting_id before deleting
   const { data: ev } = await getSupabase()
     .from("calendar_events")
-    .select("google_event_id")
+    .select("google_event_id, zoom_meeting_id")
     .eq("id", id)
     .eq("user_id", user.id)
     .single();
@@ -120,6 +143,15 @@ export async function DELETE(
   // Mirror deletion in Google Calendar
   if (user.google_access_token && ev?.google_event_id) {
     await deleteGcal(user.google_access_token, ev.google_event_id);
+  }
+
+  // Mirror deletion in Zoom
+  if (ev?.zoom_meeting_id) {
+    try {
+      await ZoomService.deleteMeeting(Number(ev.zoom_meeting_id));
+    } catch (err) {
+      console.error("[Zoom] Failed to delete meeting:", err);
+    }
   }
 
   return NextResponse.json({ success: true });

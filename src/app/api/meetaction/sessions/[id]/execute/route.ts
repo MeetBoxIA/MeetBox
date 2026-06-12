@@ -5,13 +5,12 @@
  * Creates an execution record, then dispatches each item to its destination.
  * In production this would be a background job; here it runs synchronously
  * for simplicity but the client polls the execution status.
- *
- * The actual dispatch to Jira/Slack/Notion/etc. is handled by destination-
- * specific adapters (currently stubbed — integration backends are pending).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/../auth";
 import { getSupabase } from "@/lib/supabase";
+import { sendSlackMessage } from "@/lib/integrations/slack";
+import { JiraService } from "@/lib/services/jira-service";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -20,18 +19,71 @@ async function resolveUserId(email: string) {
   return data?.id as string | null;
 }
 
-// Stub dispatcher — replace each case with real integration calls
-async function dispatchItem(item: Record<string, unknown>): Promise<{ ok: boolean; external_id?: string; external_url?: string; error?: string }> {
-  // Simulate network latency per destination
-  await new Promise((r) => setTimeout(r, 300 + Math.random() * 700));
+/** Format a MeetAction item as a readable Slack message (Slack mrkdwn). */
+function slackText(item: Record<string, unknown>): string {
+  const typeLabels: Record<string, string> = {
+    task: "📋 Tarea", decision: "✅ Decisión", risk: "⚠️ Riesgo",
+    next_step: "➡️ Próximo paso", event: "📅 Evento", note: "📝 Nota",
+  };
+  const lines = [
+    `*${typeLabels[item.type as string] ?? "Acción"} desde MeetBox*`,
+    `*${item.title}*`,
+  ];
+  if (item.description)   lines.push(String(item.description));
+  if (item.assignee_name) lines.push(`👤 Responsable: ${item.assignee_name}`);
+  if (item.priority)      lines.push(`Prioridad: ${item.priority}`);
+  return lines.join("\n");
+}
 
+// Dispatcher — routes each action item to its destination service
+async function dispatchItem(
+  userId: string,
+  item: Record<string, unknown>,
+): Promise<{ ok: boolean; external_id?: string; external_url?: string; error?: string }> {
   switch (item.destination) {
+    case "slack": {
+      const meta = (item.destination_meta ?? {}) as { channel?: string };
+      const res = await sendSlackMessage(userId, slackText(item), meta.channel);
+      if (!res.ok) return { ok: false, error: `Slack: ${res.error}` };
+      return { ok: true, external_id: res.ts, external_url: res.permalink ?? "#" };
+    }
+    case "jira": {
+      const creds = await JiraService.getCredentials(userId);
+      if (!creds) return { ok: false, error: "Jira no conectado. Conecta tu cuenta desde Integraciones." };
+
+      // Determine project key: use item metadata or fall back to first available project
+      let projectKey = item.project_key as string | undefined;
+      if (!projectKey) {
+        const projects = await JiraService.getProjects(userId);
+        if (projects.length === 0) return { ok: false, error: "No se encontraron proyectos en Jira" };
+        projectKey = projects[0].key;
+      }
+
+      // Map MeetAction priority to Jira priority
+      const priorityMap: Record<string, string> = {
+        low: "Low", medium: "Medium", high: "High", critical: "Highest",
+      };
+
+      const result = await JiraService.createIssue(userId, {
+        projectKey,
+        summary:     String(item.title ?? "Tarea de MeetBox"),
+        description: String(item.description ?? ""),
+        issueType:   "Task",
+        priority:    priorityMap[String(item.priority ?? "medium")] ?? "Medium",
+        labels:      ["meetbox"],
+      });
+
+      if (!result) return { ok: false, error: "Error al crear issue en Jira" };
+      return { ok: true, external_id: result.key, external_url: result.url };
+    }
     case "meetbook":
     case "meetcalendar":
       // Internal destinations: handled via existing API routes
+      await new Promise((r) => setTimeout(r, 200));
       return { ok: true, external_id: `internal-${Date.now()}`, external_url: "/dashboard" };
     default:
       // External integrations: stub pending real OAuth + API calls
+      await new Promise((r) => setTimeout(r, 300 + Math.random() * 700));
       return { ok: true, external_id: `stub-${Date.now()}`, external_url: "#" };
   }
 }
@@ -95,7 +147,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       .update({ status: "executing", updated_at: new Date().toISOString() })
       .eq("id", item.id);
 
-    const result = await dispatchItem(item as Record<string, unknown>);
+    const result = await dispatchItem(userId, item as Record<string, unknown>);
 
     if (result.ok) {
       executedCount++;

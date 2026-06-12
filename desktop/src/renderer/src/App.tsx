@@ -85,6 +85,8 @@ export default function App() {
   const audioChunksRef   = useRef<Blob[]>([])
   const timerRef         = useRef<ReturnType<typeof setInterval> | null>(null)
   const streamRef        = useRef<MediaStream | null>(null)
+  const micStreamRef     = useRef<MediaStream | null>(null)
+  const sysStreamRef     = useRef<MediaStream | null>(null)
   const audioCtxRef      = useRef<AudioContext | null>(null)
 
   // ── Cargar versión ──────────────────────────────────────────────────────────
@@ -138,46 +140,57 @@ export default function App() {
   }, [status])
 
   // ── Captura de audio ────────────────────────────────────────────────────────
+  // Graba micrófono + audio del sistema SIN pedir compartir pantalla.
+  // El audio del sistema se captura desde el dispositivo "monitor" (PulseAudio/
+  // PipeWire en Linux, "Stereo Mix" en Windows), que aparece como una entrada
+  // de audio normal — a diferencia de chromeMediaSource:'desktop', que dispara
+  // el selector de pantalla.
   const startAudioCapture = useCallback(async (): Promise<MediaStream | null> => {
     try {
-      // 1. Micrófono
+      // 1. Micrófono (esto además otorga permiso para leer los labels de los
+      //    dispositivos en el paso 2).
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true },
         video: false,
       })
 
-      // 2. System audio (Zoom/Meet/Teams) — requires a desktopCapturer source ID
-      //    from the main process because getUserMedia can't enumerate these directly.
+      // 2. Audio del sistema vía dispositivo "monitor"/loopback — sin prompt.
       let systemStream: MediaStream | null = null
       try {
-        const sources = await window.electronAPI.getDesktopAudioSources()
-        const screenSource = sources.find((s) => s.name.toLowerCase().includes('screen')) ?? sources[0]
-
-        if (screenSource) {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const monitor = devices.find(
+          (d) => d.kind === 'audioinput' &&
+            /monitor|loopback|stereo mix|what u hear|mezcla est/i.test(d.label),
+        )
+        if (monitor) {
           systemStream = await navigator.mediaDevices.getUserMedia({
             audio: {
-              // @ts-expect-error — API Chromium/Electron específica
-              mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: screenSource.id,
-              },
+              deviceId:         { exact: monitor.deviceId },
+              echoCancellation: false,   // no procesar el audio del sistema
+              noiseSuppression: false,
+              autoGainControl:  false,
             },
             video: false,
           })
+        } else {
+          console.warn('No se encontró dispositivo monitor de audio del sistema; grabando solo micrófono.')
         }
       } catch (sysErr) {
         console.warn('Audio del sistema no disponible, usando solo micrófono:', sysErr)
       }
 
-      // 3. Mix mic + system audio via AudioContext into a single MediaStream
+      // 3. Mezclar micrófono + audio del sistema en un único MediaStream
       const ctx  = new AudioContext()
       const dest = ctx.createMediaStreamDestination()
 
       ctx.createMediaStreamSource(micStream).connect(dest)
       if (systemStream) ctx.createMediaStreamSource(systemStream).connect(dest)
 
-      audioCtxRef.current = ctx
+      // Guardar ambos streams para detenerlos correctamente al finalizar
       streamRef.current   = dest.stream
+      micStreamRef.current = micStream
+      sysStreamRef.current = systemStream
+      audioCtxRef.current = ctx
       return dest.stream
     } catch (err) {
       const domErr = err as DOMException
@@ -188,10 +201,15 @@ export default function App() {
   }, [])
 
   const stopAudioCapture = useCallback(() => {
+    // Stop every source track (mixed output + raw mic + system) and close the ctx
     streamRef.current?.getTracks().forEach((t) => t.stop())
+    micStreamRef.current?.getTracks().forEach((t) => t.stop())
+    sysStreamRef.current?.getTracks().forEach((t) => t.stop())
     audioCtxRef.current?.close()
-    streamRef.current  = null
-    audioCtxRef.current = null
+    streamRef.current    = null
+    micStreamRef.current = null
+    sysStreamRef.current = null
+    audioCtxRef.current  = null
   }, [])
 
   // ── Start / Stop grabación ──────────────────────────────────────────────────
@@ -267,7 +285,22 @@ export default function App() {
   }, [stopAudioCapture])
 
   // ── Upload to backend + poll the processing job ─────────────────────────────
+  // The upload runs in the RENDERER using Chromium's fetch (not the main
+  // process / undici), because undici fails to send multipart FormData with a
+  // Blob ("fetch failed"). webSecurity is off and the endpoint sends CORS
+  // headers, so a direct fetch from the renderer works reliably.
   const uploadToBackend = useCallback(async (buffer: ArrayBuffer, filename: string) => {
+    // Read the connection FRESH from disk (not the React state, which may have
+    // been loaded before the token/apiUrl were persisted).
+    const conn = await window.electronAPI.getConnection()
+    const apiUrl = conn?.apiUrl ?? 'http://localhost:3000'
+    const token  = conn?.accessToken
+    if (!token) {
+      setUploadState('error')
+      setJobStage('No hay sesión de desktop. Reconecta tu cuenta.')
+      return
+    }
+
     setUploadState('uploading')
     setJobProgress(0)
     setJobStage('Subiendo grabación…')
@@ -280,16 +313,32 @@ export default function App() {
       timezone:         Intl.DateTimeFormat().resolvedOptions().timeZone,
     }
 
-    const res = await window.electronAPI.uploadRecording(buffer, filename, meta)
-    if (!res.ok || !res.jobId) {
+    let jobId: string
+    try {
+      const form = new FormData()
+      form.append('file', new Blob([buffer], { type: 'audio/webm' }), filename)
+      form.append('metadata', JSON.stringify(meta))
+
+      const res = await fetch(`${apiUrl}/api/desktop/upload`, {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${token}` },   // no Content-Type: browser sets the boundary
+        body:    form,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.job_id) {
+        setUploadState('error')
+        setJobStage(data.error ?? `Error ${res.status} al subir la grabación`)
+        return
+      }
+      jobId = data.job_id
+    } catch (err) {
       setUploadState('error')
-      setJobStage(res.error ?? 'Error al subir la grabación')
+      setJobStage('Error de red al subir: ' + (err instanceof Error ? err.message : String(err)))
       return
     }
 
     // Poll the job status until it completes or fails (max ~5 min).
     setUploadState('processing')
-    const jobId = res.jobId
     const stageLabels: Record<string, string> = {
       uploaded:          'En cola…',
       queued:            'En cola…',
@@ -303,21 +352,26 @@ export default function App() {
 
     const deadline = Date.now() + 5 * 60_000
     const poll = async (): Promise<void> => {
-      const s = await window.electronAPI.getJobStatus(jobId)
-      if (s.ok && s.status) {
-        setJobProgress(s.progress ?? 0)
-        setJobStage(stageLabels[s.status] ?? s.status)
-        if (s.status === 'completed') {
-          setUploadState('done')
-          setJobSessionId(s.session_id ?? null)
-          return
+      try {
+        const r = await fetch(`${apiUrl}/api/desktop/jobs/${jobId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const s = await r.json().catch(() => ({}))
+        if (r.ok && s.status) {
+          setJobProgress(s.progress ?? 0)
+          setJobStage(stageLabels[s.status] ?? s.status)
+          if (s.status === 'completed') {
+            setUploadState('done')
+            setJobSessionId(s.session_id ?? null)
+            return
+          }
+          if (s.status === 'failed') {
+            setUploadState('error')
+            setJobStage(s.error ?? 'El procesamiento falló')
+            return
+          }
         }
-        if (s.status === 'failed') {
-          setUploadState('error')
-          setJobStage(s.error ?? 'El procesamiento falló')
-          return
-        }
-      }
+      } catch { /* transient — keep polling */ }
       if (Date.now() < deadline) setTimeout(poll, 2000)
     }
     setTimeout(poll, 2000)

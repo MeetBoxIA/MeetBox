@@ -3,8 +3,8 @@
  *
  * GET  — fetch events for a given date range, expanding recurring series
  *         into individual virtual instances on the server.
- * POST — create a new event; optionally push to Google Calendar if the user
- *         has a linked Google access token.
+ * POST — create a new event; optionally push to Google Calendar AND/OR
+ *         create a Zoom meeting if Zoom credentials are configured.
  *
  * Recurring events are stored as a single row with recurrence_freq/days/until.
  * The GET handler expands them into virtual instances so the client calendar
@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/../auth";
 import { getSupabase } from "@/lib/supabase";
+import { ZoomService } from "@/lib/services/zoom-service";
 
 interface DbEvent {
   id: string;
@@ -31,6 +32,9 @@ interface DbEvent {
   recurrence_freq:  "daily" | "weekly" | null;
   recurrence_days:  number[] | null;
   recurrence_until: string | null;
+  zoom_meeting_id: string | null;
+  zoom_join_url: string | null;
+  zoom_status: string | null;
 }
 
 /** Look up the user's internal ID and Google token in one query. */
@@ -201,7 +205,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ events: all });
 }
 
-/** POST — create a new event and optionally sync it to Google Calendar. */
+/** POST — create a new event and optionally sync to Google Calendar and/or Zoom. */
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.email) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
@@ -219,6 +223,7 @@ export async function POST(req: NextRequest) {
     recurrence_freq  = null,
     recurrence_days  = null,
     recurrence_until = null,
+    with_zoom = type === "meeting",
   } = body;
 
   if (!title || !start_at) return NextResponse.json({ error: "title and start_at are required" }, { status: 400 });
@@ -231,26 +236,61 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // Create Zoom meeting if requested (only for non-recurring, timed events)
+  let zoom_meeting_id: string | null = null;
+  let zoom_join_url: string | null = null;
+  let zoom_status: string | null = null;
+
+  if (with_zoom && !all_day && !recurrence_freq) {
+    try {
+      const duration = end_at
+        ? Math.max(1, Math.round((new Date(end_at).getTime() - new Date(start_at).getTime()) / 60000))
+        : 60;
+
+      const zoom = await ZoomService.createMeeting({
+        topic: String(title).trim(),
+        start_time: new Date(start_at).toISOString(),
+        duration_minutes: duration,
+        agenda: description ?? undefined,
+      });
+
+      zoom_meeting_id = String(zoom.id);
+      zoom_join_url = zoom.join_url;
+      zoom_status = "created";
+    } catch (err) {
+      console.error("[Zoom] Failed to create meeting:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      return NextResponse.json({ error: `Zoom: ${msg}` }, { status: 502 });
+    }
+  }
+
+  const insertFields: Record<string, unknown> = {
+    user_id: user.id,
+    title:   String(title).trim(),
+    description: description ? String(description) : null,
+    location:    location    ? String(location)    : null,
+    type,
+    start_at,
+    end_at:         end_at || null,
+    all_day,
+    color,
+    notify_email,
+    notify_minutes,
+    google_event_id,
+    room_id: room_id || null,
+    recurrence_freq,
+    recurrence_days,
+    recurrence_until,
+  };
+  if (zoom_meeting_id) {
+    insertFields.zoom_meeting_id = zoom_meeting_id;
+    insertFields.zoom_join_url   = zoom_join_url;
+    insertFields.zoom_status     = zoom_status;
+  }
+
   const { data, error } = await getSupabase()
     .from("calendar_events")
-    .insert({
-      user_id: user.id,
-      title:   String(title).trim(),
-      description: description ? String(description) : null,
-      location:    location    ? String(location)    : null,
-      type,
-      start_at,
-      end_at:         end_at || null,
-      all_day,
-      color,
-      notify_email,
-      notify_minutes,
-      google_event_id,
-      room_id: room_id || null,
-      recurrence_freq,
-      recurrence_days,
-      recurrence_until,
-    })
+    .insert(insertFields)
     .select()
     .single();
 

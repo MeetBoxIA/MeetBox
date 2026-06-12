@@ -53,20 +53,20 @@ describe("RegisterSchema", () => {
 
 // ── OtpVerifySchema ────────────────────────────────────────────────────────────
 describe("OtpVerifySchema", () => {
-  it("accepts valid 6-digit OTP", () => {
-    expect(OtpVerifySchema.safeParse({ email: "a@b.com", otp: "123456" }).success).toBe(true);
+  it("accepts valid 4-digit OTP code", () => {
+    expect(OtpVerifySchema.safeParse({ email: "a@b.com", code: "1234" }).success).toBe(true);
   });
 
-  it("rejects 4-digit OTP", () => {
-    expect(OtpVerifySchema.safeParse({ email: "a@b.com", otp: "1234" }).success).toBe(false);
+  it("rejects 6-digit OTP code", () => {
+    expect(OtpVerifySchema.safeParse({ email: "a@b.com", code: "123456" }).success).toBe(false);
   });
 
   it("rejects non-numeric OTP", () => {
-    expect(OtpVerifySchema.safeParse({ email: "a@b.com", otp: "abc123" }).success).toBe(false);
+    expect(OtpVerifySchema.safeParse({ email: "a@b.com", code: "abcd" }).success).toBe(false);
   });
 
   it("rejects missing email", () => {
-    expect(OtpVerifySchema.safeParse({ otp: "123456" }).success).toBe(false);
+    expect(OtpVerifySchema.safeParse({ code: "1234" }).success).toBe(false);
   });
 });
 

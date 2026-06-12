@@ -19,46 +19,74 @@ interface OtpDialogProps {
 export function OtpDialog({ open, onOpenChange, email, onVerified }: OtpDialogProps) {
   const [value, setValue] = React.useState("");
   const [status, setStatus] = React.useState<"idle" | "loading" | "success" | "error">("idle");
+  const [errorMessage, setErrorMessage] = React.useState("");
+  const [locked, setLocked] = React.useState(false);
   const [resending, setResending] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
-    if (open) { setValue(""); setStatus("idle"); }
+    if (open) {
+      setValue("");
+      setStatus("idle");
+      setErrorMessage("");
+      setLocked(false);
+    }
   }, [open]);
 
   async function onComplete(code: string) {
+    if (locked) return;
     setStatus("loading");
+    setErrorMessage("");
     try {
       const res = await fetch("/api/auth/otp/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, code }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setStatus("success");
         setTimeout(onVerified, 800);
       } else {
+        const isLocked = Boolean(data.locked);
+        setLocked(isLocked);
+        setErrorMessage(data.error ?? "No se pudo verificar el código. Inténtalo de nuevo.");
         setStatus("error");
         setValue("");
-        setTimeout(() => { setStatus("idle"); inputRef.current?.focus(); }, 1500);
+        if (!isLocked) {
+          setTimeout(() => { setStatus("idle"); inputRef.current?.focus(); }, 1500);
+        }
       }
     } catch {
       setStatus("error");
+      setErrorMessage("No se pudo conectar con el servidor. Inténtalo de nuevo.");
       setValue("");
     }
   }
 
   async function resend() {
     setResending(true);
-    await fetch("/api/auth/otp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    setResending(false);
-    setValue("");
-    setStatus("idle");
-    setTimeout(() => inputRef.current?.focus(), 100);
+    setErrorMessage("");
+    try {
+      const res = await fetch("/api/auth/otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error ?? "No se pudo reenviar el código.");
+      }
+      setValue("");
+      setLocked(false);
+      setStatus("idle");
+      setTimeout(() => inputRef.current?.focus(), 100);
+    } catch (err) {
+      setStatus("error");
+      setErrorMessage(err instanceof Error ? err.message : "No se pudo reenviar el código.");
+    } finally {
+      setResending(false);
+    }
   }
 
   return (
@@ -106,9 +134,9 @@ export function OtpDialog({ open, onOpenChange, email, onVerified }: OtpDialogPr
                 value={value}
                 onChange={setValue}
                 maxLength={4}
-                disabled={status === "loading"}
+                disabled={status === "loading" || locked}
                 containerClassName="flex items-center gap-3 has-[:disabled]:opacity-50"
-                onFocus={() => { if (status === "error") setStatus("idle"); }}
+                onFocus={() => { if (status === "error" && !locked) setStatus("idle"); }}
                 render={({ slots }) => (
                   <div className="flex gap-3">
                     {slots.map((slot, idx) => (
@@ -127,7 +155,7 @@ export function OtpDialog({ open, onOpenChange, email, onVerified }: OtpDialogPr
             )}
             {status === "error" && (
               <p className="text-center text-xs text-red-500" role="alert" aria-live="polite">
-                Código incorrecto o expirado. Inténtalo de nuevo.
+                {errorMessage || "Código incorrecto o expirado. Inténtalo de nuevo."}
               </p>
             )}
 

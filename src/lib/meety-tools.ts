@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { getSupabase } from "./supabase";
+import { JiraService } from "./services/jira-service";
 
 export interface ToolContext {
   userId:    string;
@@ -164,6 +165,75 @@ export const MEETY_TOOLS = [
         properties: {
           limit: { type: "integer", description: "Number of recordings to return (default 10)" },
         },
+      },
+    },
+  },
+
+  // ── Jira tools ──────────────────────────────────────────────────────────
+  {
+    type: "function" as const,
+    function: {
+      name: "jira_create_issue",
+      description:
+        "Creates a new issue (task, bug, story) in Jira. Requires the user to have connected their Jira account. Ask for the project key if unknown.",
+      parameters: {
+        type: "object",
+        properties: {
+          projectKey:  { type: "string", description: "Jira project key (e.g. 'PROJ', 'DEV')" },
+          summary:     { type: "string", description: "Issue title / summary" },
+          description: { type: "string", description: "Detailed description (optional)" },
+          issueType:   { type: "string", enum: ["Task", "Bug", "Story", "Epic"], description: "Issue type (default: Task)" },
+          priority:    { type: "string", enum: ["Highest", "High", "Medium", "Low", "Lowest"], description: "Priority level" },
+        },
+        required: ["projectKey", "summary"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "jira_search",
+      description:
+        "Searches Jira issues using JQL. Returns matching issues with key, summary, status, assignee. Use for queries like 'my open tasks' or 'bugs in project X'.",
+      parameters: {
+        type: "object",
+        properties: {
+          jql:        { type: "string", description: "JQL query string (e.g. 'project = DEV AND status = \"To Do\"')" },
+          maxResults: { type: "integer", description: "Max results to return (default 10, max 50)" },
+        },
+        required: ["jql"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "jira_transition_issue",
+      description:
+        "Moves a Jira issue to a new status (e.g. 'In Progress', 'Done'). Use when the user says to move, complete, or start an issue.",
+      parameters: {
+        type: "object",
+        properties: {
+          issueKey:       { type: "string", description: "Issue key (e.g. 'PROJ-123')" },
+          transitionName: { type: "string", description: "Target status name (e.g. 'Done', 'In Progress')" },
+        },
+        required: ["issueKey", "transitionName"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "jira_add_comment",
+      description:
+        "Adds a comment to an existing Jira issue. Use when the user wants to add notes or updates to a ticket.",
+      parameters: {
+        type: "object",
+        properties: {
+          issueKey: { type: "string", description: "Issue key (e.g. 'PROJ-123')" },
+          comment:  { type: "string", description: "Comment text to add" },
+        },
+        required: ["issueKey", "comment"],
       },
     },
   },
@@ -416,6 +486,59 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
           .limit(limit);
         if (error) return err(error.message);
         return ok({ count: data?.length ?? 0, recordings: data });
+      }
+
+      // ── Jira ─────────────────────────────────────────────────────────────
+      case "jira_create_issue": {
+        const projectKey = String(args.projectKey ?? "").trim();
+        const summary    = String(args.summary ?? "").trim();
+        if (!projectKey || !summary) return err("projectKey and summary are required");
+
+        const result = await JiraService.createIssue(ctx.userId, {
+          projectKey,
+          summary,
+          description: args.description ? String(args.description) : undefined,
+          issueType:   args.issueType  ? String(args.issueType)  : undefined,
+          priority:    args.priority   ? String(args.priority)   : undefined,
+        });
+        if (!result) return err("Failed to create Jira issue. Check that Jira is connected and the project key is correct.");
+        return ok({ created: { key: result.key, url: result.url, id: result.id } });
+      }
+
+      case "jira_search": {
+        const jql = String(args.jql ?? "").trim();
+        if (!jql) return err("jql query is required");
+        const maxResults = Math.min(50, Number(args.maxResults ?? 10));
+        const result = await JiraService.searchJql(ctx.userId, jql, maxResults);
+        return ok({
+          total: result.total,
+          issues: result.issues.map((i) => ({
+            key:      i.key,
+            summary:  i.fields.summary,
+            status:   i.fields.status?.name ?? "Unknown",
+            assignee: i.fields.assignee?.displayName ?? null,
+            priority: i.fields.priority?.name ?? null,
+            type:     i.fields.issuetype?.name ?? null,
+          })),
+        });
+      }
+
+      case "jira_transition_issue": {
+        const issueKey       = String(args.issueKey ?? "").trim();
+        const transitionName = String(args.transitionName ?? "").trim();
+        if (!issueKey || !transitionName) return err("issueKey and transitionName are required");
+        const success = await JiraService.transitionIssue(ctx.userId, issueKey, transitionName);
+        if (!success) return err(`Could not transition ${issueKey} to "${transitionName}". Check the issue key and available transitions.`);
+        return ok({ transitioned: { issueKey, to: transitionName } });
+      }
+
+      case "jira_add_comment": {
+        const issueKey = String(args.issueKey ?? "").trim();
+        const comment  = String(args.comment ?? "").trim();
+        if (!issueKey || !comment) return err("issueKey and comment are required");
+        const success = await JiraService.addComment(ctx.userId, issueKey, comment);
+        if (!success) return err(`Failed to add comment to ${issueKey}. Check that the issue exists.`);
+        return ok({ commented: { issueKey } });
       }
 
       default:

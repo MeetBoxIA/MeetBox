@@ -9,7 +9,10 @@ import { cn } from "@/lib/utils";
 export default function VerifyClient({ email }: { email: string }) {
   const router = useRouter();
   const [value, setValue] = React.useState("");
-  const [status, setStatus] = React.useState<"sending" | "idle" | "loading" | "error" | "success">("sending");
+  const [status, setStatus] = React.useState<"sending" | "idle" | "loading" | "send-error" | "verify-error" | "success">("sending");
+  const [sendError, setSendError] = React.useState("");
+  const [verifyError, setVerifyError] = React.useState("");
+  const [locked, setLocked] = React.useState(false);
   const [resending, setResending] = React.useState(false);
   const [devMode, setDevMode] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -22,6 +25,8 @@ export default function VerifyClient({ email }: { email: string }) {
 
   async function sendOTP() {
     setStatus("sending");
+    setSendError("");
+    setVerifyError("");
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 12_000);
     try {
@@ -32,40 +37,51 @@ export default function VerifyClient({ email }: { email: string }) {
         signal: controller.signal,
       });
       clearTimeout(timer);
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const data = await res.json();
         if (data.dev) setDevMode(true);
+        setLocked(false);
         setStatus("idle");
         setTimeout(() => inputRef.current?.focus(), 100);
       } else {
-        const data = await res.json().catch(() => ({}));
         console.error("OTP error:", data.error);
-        setStatus("error");
+        setSendError(data.error ?? "No se pudo enviar el código.");
+        setStatus("send-error");
       }
     } catch {
       clearTimeout(timer);
-      setStatus("error");
+      setSendError("No se pudo enviar el código. Revisa tu conexión e intenta de nuevo.");
+      setStatus("send-error");
     }
   }
 
   async function onComplete(code: string) {
+    if (locked) return;
     setStatus("loading");
+    setVerifyError("");
     try {
       const res = await fetch("/api/auth/otp/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, code }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setStatus("success");
         setTimeout(() => router.push("/dashboard"), 900);
       } else {
-        setStatus("error");
+        const isLocked = Boolean(data.locked);
+        setLocked(isLocked);
+        setVerifyError(data.error ?? "No se pudo verificar el código. Inténtalo de nuevo.");
+        setStatus("verify-error");
         setValue("");
-        setTimeout(() => { setStatus("idle"); inputRef.current?.focus(); }, 1500);
+        if (!isLocked) {
+          setTimeout(() => { setStatus("idle"); inputRef.current?.focus(); }, 1500);
+        }
       }
     } catch {
-      setStatus("error");
+      setVerifyError("No se pudo conectar con el servidor. Inténtalo de nuevo.");
+      setStatus("verify-error");
       setValue("");
     }
   }
@@ -101,9 +117,11 @@ export default function VerifyClient({ email }: { email: string }) {
         )}
 
         {/* ── Error al enviar ── */}
-        {status === "error" && !value && (
+        {status === "send-error" && (
           <div className="flex flex-col items-center gap-3 py-4 text-center">
-            <p className="text-sm text-red-500">No se pudo enviar el código.</p>
+            <p className="text-sm text-red-500" role="alert" aria-live="polite">
+              {sendError || "No se pudo enviar el código."}
+            </p>
             <button
               onClick={resend}
               className="text-sm font-semibold text-[#050040] hover:underline"
@@ -114,7 +132,7 @@ export default function VerifyClient({ email }: { email: string }) {
         )}
 
         {/* ── Ingresa el código ── */}
-        {(status === "idle" || status === "loading" || status === "error") && (
+        {(status === "idle" || status === "loading" || status === "verify-error") && (
           <>
             <div className="text-center mb-7">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#050040]/10 mb-4">
@@ -142,13 +160,13 @@ export default function VerifyClient({ email }: { email: string }) {
                 value={value}
                 onChange={setValue}
                 maxLength={4}
-                disabled={status === "loading"}
+                disabled={status === "loading" || locked}
                 containerClassName="flex items-center has-[:disabled]:opacity-50"
-                onFocus={() => { if (status === "error") setStatus("idle"); }}
+                onFocus={() => { if (status === "verify-error" && !locked) setStatus("idle"); }}
                 render={({ slots }) => (
                   <div className="flex gap-3">
                     {slots.map((slot, i) => (
-                      <OtpSlot key={i} {...slot} hasError={status === "error"} />
+                      <OtpSlot key={i} {...slot} hasError={status === "verify-error"} />
                     ))}
                   </div>
                 )}
@@ -162,9 +180,9 @@ export default function VerifyClient({ email }: { email: string }) {
               </div>
             )}
 
-            {status === "error" && (
-              <p className="text-center text-xs text-red-500 mb-4" role="alert">
-                Código incorrecto o expirado. Inténtalo de nuevo.
+            {status === "verify-error" && (
+              <p className="text-center text-xs text-red-500 mb-4" role="alert" aria-live="polite">
+                {verifyError || "Código incorrecto o expirado. Inténtalo de nuevo."}
               </p>
             )}
 
