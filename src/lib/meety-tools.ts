@@ -12,6 +12,8 @@
 
 import { getSupabase } from "./supabase";
 import { JiraService } from "./services/jira-service";
+import { ZoomService } from "./services/zoom-service";
+import { sendEmail } from "./email";
 
 export interface ToolContext {
   userId:    string;
@@ -61,6 +63,7 @@ export const MEETY_TOOLS = [
           all_day:     { type: "boolean", description: "Whether it's an all-day event" },
           location:    { type: "string", description: "Location or URL (optional)" },
           description: { type: "string", description: "Description or agenda (optional)" },
+          with_zoom:   { type: "boolean", description: "Whether to create a Zoom meeting. Defaults to true for type=meeting." },
         },
         required: ["title", "start_at"],
       },
@@ -321,28 +324,102 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
         const start_at = String(args.start_at ?? "");
         if (!title || !start_at) return err("title and start_at are required");
 
-        const type  = String(args.type ?? "meeting") as "meeting" | "event" | "reminder";
+        const type     = String(args.type ?? "meeting") as "meeting" | "event" | "reminder";
+        const all_day  = Boolean(args.all_day);
+        const end_at   = args.end_at ? String(args.end_at) : null;
         // Deterministic color per event type keeps the calendar visually consistent
         const color = { meeting: "#050040", event: "#059669", reminder: "#d97706" }[type];
 
+        // Determine whether to create a Zoom meeting
+        const with_zoom = args.with_zoom !== undefined
+          ? Boolean(args.with_zoom)
+          : type === "meeting";
+
+        let zoom_meeting_id: string | null = null;
+        let zoom_join_url: string | null   = null;
+        let zoom_status: string | null     = null;
+
+        if (with_zoom && !all_day) {
+          try {
+            const duration = end_at
+              ? Math.max(1, Math.round((new Date(end_at).getTime() - new Date(start_at).getTime()) / 60000))
+              : 60;
+
+            const zoom = await ZoomService.createMeeting({
+              topic: title,
+              start_time: new Date(start_at).toISOString(),
+              duration_minutes: duration,
+              agenda: args.description ? String(args.description) : undefined,
+            });
+
+            zoom_meeting_id = String(zoom.id);
+            zoom_join_url = zoom.join_url;
+            zoom_status = "created";
+          } catch (e) {
+            console.error("[MeetyTools] Zoom createMeeting failed:", e);
+          }
+        }
+
+        const insertFields: Record<string, unknown> = {
+          user_id:        ctx.userId,
+          title,
+          type,
+          start_at,
+          end_at:         end_at,
+          all_day,
+          location:       args.location    ?? null,
+          description:    args.description ?? null,
+          color,
+          notify_email:   false,
+          notify_minutes: 15,
+        };
+
+        if (zoom_meeting_id) {
+          insertFields.zoom_meeting_id = zoom_meeting_id;
+          insertFields.zoom_join_url   = zoom_join_url;
+          insertFields.zoom_status     = zoom_status;
+        }
+
         const { data, error } = await db
           .from("calendar_events")
-          .insert({
-            user_id:        ctx.userId,
-            title,
-            type,
-            start_at,
-            end_at:         args.end_at      ?? null,
-            all_day:        args.all_day     ?? false,
-            location:       args.location    ?? null,
-            description:    args.description ?? null,
-            color,
-            notify_email:   false,
-            notify_minutes: 15,
-          })
-          .select("id, title, start_at, end_at")
+          .insert(insertFields)
+          .select("id, title, start_at, end_at, zoom_meeting_id, zoom_join_url, zoom_status")
           .single();
         if (error) return err(error.message);
+
+        // Send notification email when a meeting with Zoom is created
+        if (data && zoom_meeting_id) {
+          const startDate = new Date(start_at);
+          const formattedDate = startDate.toLocaleDateString("es-ES", {
+            weekday: "long", year: "numeric", month: "long", day: "numeric",
+          });
+          const formattedTime = startDate.toLocaleTimeString("es-ES", {
+            hour: "2-digit", minute: "2-digit",
+          });
+
+          sendEmail({
+            to: ctx.userEmail,
+            subject: `📅 ${title} — reunión creada en MeetBox`,
+            html: `
+              <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+                <h2 style="color: #050040;">${title}</h2>
+                <p style="font-size: 16px;"><strong>Fecha:</strong> ${formattedDate}</p>
+                <p style="font-size: 16px;"><strong>Hora:</strong> ${formattedTime}</p>
+                ${zoom_join_url ? `
+                  <a href="${zoom_join_url}"
+                     style="display: inline-block; padding: 12px 24px; background: #050040; color: #fff;
+                            text-decoration: none; border-radius: 8px; font-size: 16px; margin-top: 12px;">
+                    Unirse a la reunión Zoom
+                  </a>
+                ` : ""}
+                <p style="margin-top: 24px; color: #666; font-size: 14px;">
+                  — MeetBox
+                </p>
+              </div>
+            `,
+          }).catch((e) => console.error("[MeetyTools] Failed to send notification email:", e));
+        }
+
         return ok({ created: data });
       }
 
