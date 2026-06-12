@@ -1113,6 +1113,23 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
   );
 
   async function toggle(id: string) {
+    // Slack uses a REAL OAuth flow: connecting redirects to Slack's authorize
+    // screen; disconnecting revokes the token server-side. The callback updates
+    // user_profiles.integrations, so on return the card shows as connected.
+    if (id === "slack") {
+      if (!connected.includes("slack")) {
+        window.location.href = "/api/integrations/slack/connect";
+        return;
+      }
+      setSaving(id);
+      await fetch("/api/integrations/slack", { method: "DELETE" });
+      const next = connected.filter((x) => x !== "slack");
+      setConnected(next);
+      onUpdate({ integrations: next });
+      setSaving(null);
+      return;
+    }
+
     const next = connected.includes(id) ? connected.filter((x) => x !== id) : [...connected, id];
     setSaving(id);
     await fetch("/api/user/profile", {
