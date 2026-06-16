@@ -11,6 +11,7 @@ import { auth } from "@/../auth";
 import { getSupabase } from "@/lib/supabase";
 import { sendSlackMessage } from "@/lib/integrations/slack";
 import { JiraService } from "@/lib/services/jira-service";
+import { NotionService } from "@/lib/services/notion-service";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -75,6 +76,18 @@ async function dispatchItem(
 
       if (!result) return { ok: false, error: "Error al crear issue en Jira" };
       return { ok: true, external_id: result.key, external_url: result.url };
+    }
+    case "notion": {
+      const creds = await NotionService.getCredentials(userId);
+      if (!creds) return { ok: false, error: "Notion no conectado. Conecta tu cuenta desde Integraciones." };
+
+      const result = await NotionService.createPage(userId, {
+        title: String(item.title ?? "Nota de MeetBox"),
+        content: String(item.description ?? ""),
+      });
+
+      if (!result) return { ok: false, error: "Error al crear página en Notion (asegúrate de darle acceso a una página al integrar)" };
+      return { ok: true, external_id: result.id, external_url: result.url };
     }
     case "meetbook":
     case "meetcalendar":

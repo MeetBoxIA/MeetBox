@@ -1104,7 +1104,7 @@ function DesktopTokenCard() {
 
 // ── Integrations view ─────────────────────────────────────────────────────────
 // IDs that have real OAuth flows (not just profile toggles)
-const OAUTH_INTEGRATIONS = new Set(["jira", "gcal"]);
+const OAUTH_INTEGRATIONS = new Set(["jira", "gcal", "notion"]);
 
 function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (p: Partial<Profile>) => void }) {
   const { t } = useTranslation();
@@ -1119,6 +1119,8 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
   const [jiraConnected,  setJiraConnected]  = React.useState(false);
   const [jiraSiteUrl,    setJiraSiteUrl]    = React.useState<string | null>(null);
   const [gcalConnected,  setGcalConnected]  = React.useState(false);
+  const [notionConnected,  setNotionConnected]  = React.useState(false);
+  const [notionWorkspace,  setNotionWorkspace]  = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<{ msg: string; type: "success" | "error" | "info" } | null>(null);
 
   // Check OAuth statuses on mount + handle URL query params for toasts
@@ -1131,10 +1133,19 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
       })
       .catch(() => {});
 
+    fetch("/api/auth/notion/status")
+      .then((r) => r.ok ? r.json() : { connected: false })
+      .then((d: { connected: boolean; workspace_name?: string }) => {
+        setNotionConnected(d.connected);
+        setNotionWorkspace(d.workspace_name ?? null);
+      })
+      .catch(() => {});
+
     // Handle query params from OAuth callbacks
     const params = new URLSearchParams(window.location.search);
     const jiraStatus = params.get("jira");
     const gcalStatus = params.get("gcal");
+    const notionStatus = params.get("notion");
     if (jiraStatus === "connected") {
       setToast({ msg: "¡Jira conectado exitosamente!", type: "success" });
       setJiraConnected(true);
@@ -1147,11 +1158,20 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
       setToast({ msg: "¡Google Calendar conectado!", type: "success" });
       setGcalConnected(true);
     }
+    if (notionStatus === "connected") {
+      setToast({ msg: "¡Notion conectado exitosamente!", type: "success" });
+      setNotionConnected(true);
+    } else if (notionStatus === "denied") {
+      setToast({ msg: "Autorización de Notion denegada", type: "error" });
+    } else if (notionStatus === "error") {
+      setToast({ msg: "Error al conectar Notion", type: "error" });
+    }
     // Clean URL params
-    if (jiraStatus || gcalStatus) {
+    if (jiraStatus || gcalStatus || notionStatus) {
       const url = new URL(window.location.href);
       url.searchParams.delete("jira");
       url.searchParams.delete("gcal");
+      url.searchParams.delete("notion");
       window.history.replaceState({}, "", url.toString());
     }
   }, []);
@@ -1164,12 +1184,14 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
   function isOAuthConnected(id: string): boolean {
     if (id === "jira") return jiraConnected;
     if (id === "gcal") return gcalConnected;
+    if (id === "notion") return notionConnected;
     return connected.includes(id);
   }
 
   async function handleConnect(id: string) {
     if (id === "jira")  { window.location.href = "/api/auth/jira"; return; }
     if (id === "gcal")  { window.location.href = "/api/auth/google-calendar"; return; }
+    if (id === "notion"){ window.location.href = "/api/auth/notion"; return; }
     await toggle(id);
   }
 
@@ -1180,6 +1202,14 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
       setJiraConnected(false); setJiraSiteUrl(null);
       setSaving(null);
       setToast({ msg: "Jira desconectado", type: "info" });
+      return;
+    }
+    if (id === "notion") {
+      setSaving(id);
+      await fetch("/api/auth/notion/status", { method: "DELETE" });
+      setNotionConnected(false); setNotionWorkspace(null);
+      setSaving(null);
+      setToast({ msg: "Notion desconectado", type: "info" });
       return;
     }
     await toggle(id);
@@ -1319,6 +1349,13 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
                     <p className="text-[10px] text-[#0052CC] mt-1.5 font-medium truncate flex items-center gap-1">
                       <Globe className="w-3 h-3 shrink-0" />
                       {jiraSiteUrl.replace(/^https?:\/\//, "")}
+                    </p>
+                  )}
+                  {/* Show Notion workspace name when connected */}
+                  {id === "notion" && isConn && notionWorkspace && (
+                    <p className="text-[10px] text-slate-600 mt-1.5 font-medium truncate flex items-center gap-1">
+                      <Globe className="w-3 h-3 shrink-0" />
+                      Workspace: {notionWorkspace}
                     </p>
                   )}
                 </div>
