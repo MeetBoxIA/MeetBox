@@ -1104,7 +1104,7 @@ function DesktopTokenCard() {
 
 // ── Integrations view ─────────────────────────────────────────────────────────
 // IDs that have real OAuth flows (not just profile toggles)
-const OAUTH_INTEGRATIONS = new Set(["jira", "gcal"]);
+const OAUTH_INTEGRATIONS = new Set(["jira", "gcal", "zoom"]);
 
 function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (p: Partial<Profile>) => void }) {
   const { t } = useTranslation();
@@ -1119,6 +1119,8 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
   const [jiraConnected,  setJiraConnected]  = React.useState(false);
   const [jiraSiteUrl,    setJiraSiteUrl]    = React.useState<string | null>(null);
   const [gcalConnected,  setGcalConnected]  = React.useState(false);
+  const [zoomConnected,  setZoomConnected]  = React.useState(false);
+  const [zoomEmail,      setZoomEmail]      = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<{ msg: string; type: "success" | "error" | "info" } | null>(null);
 
   // Check OAuth statuses on mount + handle URL query params for toasts
@@ -1131,10 +1133,19 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
       })
       .catch(() => {});
 
+    fetch("/api/auth/zoom/status")
+      .then((r) => r.ok ? r.json() : { connected: false })
+      .then((d: { connected: boolean; zoom_email?: string }) => {
+        setZoomConnected(d.connected);
+        setZoomEmail(d.zoom_email ?? null);
+      })
+      .catch(() => {});
+
     // Handle query params from OAuth callbacks
     const params = new URLSearchParams(window.location.search);
     const jiraStatus = params.get("jira");
     const gcalStatus = params.get("gcal");
+    const zoomStatus = params.get("zoom");
     if (jiraStatus === "connected") {
       setToast({ msg: "¡Jira conectado exitosamente!", type: "success" });
       setJiraConnected(true);
@@ -1147,11 +1158,25 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
       setToast({ msg: "¡Google Calendar conectado!", type: "success" });
       setGcalConnected(true);
     }
+    if (zoomStatus === "connected") {
+      setToast({ msg: "¡Zoom conectado exitosamente!", type: "success" });
+      setZoomConnected(true);
+      // Re-fetch zoom email after callback
+      fetch("/api/auth/zoom/status")
+        .then((r) => r.ok ? r.json() : { connected: false })
+        .then((d: { connected: boolean; zoom_email?: string }) => setZoomEmail(d.zoom_email ?? null))
+        .catch(() => {});
+    } else if (zoomStatus === "denied") {
+      setToast({ msg: "Autorización de Zoom denegada", type: "error" });
+    } else if (zoomStatus === "error") {
+      setToast({ msg: "Error al conectar Zoom", type: "error" });
+    }
     // Clean URL params
-    if (jiraStatus || gcalStatus) {
+    if (jiraStatus || gcalStatus || zoomStatus) {
       const url = new URL(window.location.href);
       url.searchParams.delete("jira");
       url.searchParams.delete("gcal");
+      url.searchParams.delete("zoom");
       window.history.replaceState({}, "", url.toString());
     }
   }, []);
@@ -1164,12 +1189,14 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
   function isOAuthConnected(id: string): boolean {
     if (id === "jira") return jiraConnected;
     if (id === "gcal") return gcalConnected;
+    if (id === "zoom") return zoomConnected;
     return connected.includes(id);
   }
 
   async function handleConnect(id: string) {
     if (id === "jira")  { window.location.href = "/api/auth/jira"; return; }
     if (id === "gcal")  { window.location.href = "/api/auth/google-calendar"; return; }
+    if (id === "zoom")  { window.location.href = "/api/auth/zoom"; return; }
     await toggle(id);
   }
 
@@ -1180,6 +1207,14 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
       setJiraConnected(false); setJiraSiteUrl(null);
       setSaving(null);
       setToast({ msg: "Jira desconectado", type: "info" });
+      return;
+    }
+    if (id === "zoom") {
+      setSaving(id);
+      await fetch("/api/auth/zoom/status", { method: "DELETE" });
+      setZoomConnected(false); setZoomEmail(null);
+      setSaving(null);
+      setToast({ msg: "Zoom desconectado", type: "info" });
       return;
     }
     await toggle(id);
@@ -1319,6 +1354,12 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
                     <p className="text-[10px] text-[#0052CC] mt-1.5 font-medium truncate flex items-center gap-1">
                       <Globe className="w-3 h-3 shrink-0" />
                       {jiraSiteUrl.replace(/^https?:\/\//, "")}
+                    </p>
+                  )}
+                  {id === "zoom" && isConn && zoomEmail && (
+                    <p className="text-[10px] text-[#2D8CFF] mt-1.5 font-medium truncate flex items-center gap-1">
+                      <Mail className="w-3 h-3 shrink-0" />
+                      {zoomEmail}
                     </p>
                   )}
                 </div>

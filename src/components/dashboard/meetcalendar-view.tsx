@@ -18,7 +18,7 @@ import {
   ChevronLeft, ChevronRight, Plus, X, Clock, MapPin, Bell,
   Trash2, Video, CalendarDays, AlignLeft, Check, RefreshCw,
   GripVertical, Share2, Copy, Link2, ExternalLink,
-  ArrowLeft, ArrowRight, Sparkles, Pencil, Repeat,
+  ArrowLeft, ArrowRight, Sparkles, Pencil, Repeat, DoorOpen, Users,
 } from "lucide-react";
 import { SiGooglecalendar, SiApple } from "react-icons/si";
 import { useNotifications } from "@/lib/notifications";
@@ -41,6 +41,7 @@ interface CalEvent {
   notify_email:   boolean;
   notify_minutes: number;
   google_event_id?: string | null;
+  room_id?: string | null;
   // Recurrence (also present on instances returned by the API)
   recurrence_freq?:  RecurrenceFreq | null;
   recurrence_days?:  number[] | null;
@@ -65,6 +66,7 @@ interface EventFormData {
   recurrence_freq:  RecurrenceFreq;
   recurrence_days:  number[];     // 0=Mon … 6=Sun, only used when freq === "weekly"
   recurrence_until: string;       // "" = never, else "YYYY-MM-DD"
+  room_id: string;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -163,7 +165,7 @@ function formDefaults(type: EventType, dateOrTime?: Date): EventFormData {
     location: "", description: "",
     color: TYPE_META[type].color,
     notify: false, notify_minutes: 15, notify_email: false,
-    recurrence_freq: "none", recurrence_days: [], recurrence_until: "",
+    recurrence_freq: "none", recurrence_days: [], recurrence_until: "", room_id: "",
   };
 }
 function eventToForm(ev: CalEvent): EventFormData {
@@ -186,6 +188,7 @@ function eventToForm(ev: CalEvent): EventFormData {
     recurrence_freq:  ev.recurrence_freq ?? "none",
     recurrence_days:  ev.recurrence_days ?? [],
     recurrence_until: ev.recurrence_until ? ev.recurrence_until.split("T")[0] : "",
+    room_id: ev.room_id ?? "",
   };
 }
 /**
@@ -233,6 +236,7 @@ function formToPayload(f: EventFormData): Omit<CalEvent, "id" | "google_event_id
     recurrence_freq:  isRec ? f.recurrence_freq : null,
     recurrence_days:  recDays,
     recurrence_until: recUntil,
+    room_id: f.room_id || null,
   };
 }
 
@@ -240,6 +244,7 @@ function formToPayload(f: EventFormData): Omit<CalEvent, "id" | "google_event_id
 interface ModalProps {
   editing:  CalEvent | null;
   defaults: EventFormData;
+  rooms:    { id: string; name: string; emoji: string; color: string }[];
   onSave:   (payload: Omit<CalEvent, "id" | "google_event_id">) => Promise<void>;
   onDelete: () => Promise<void>;
   onClose:  () => void;
@@ -265,12 +270,24 @@ const TYPE_PLACEHOLDERS: Record<EventType, string> = {
   reminder: "Ej. Llamar al equipo legal",
 };
 
-function EventModal({ editing, defaults, onSave, onDelete, onClose }: ModalProps) {
+function EventModal({ editing, defaults, rooms, onSave, onDelete, onClose }: ModalProps) {
   const [form, setForm]         = React.useState<EventFormData>(() => editing ? eventToForm(editing) : defaults);
   const [step, setStep]         = React.useState(0);
   const [direction, setDirection] = React.useState<"fwd" | "back">("fwd");
   const [saving,   setSaving]   = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  const [roomMembers,    setRoomMembers]    = React.useState<{ id: string; name: string; email: string }[]>([]);
+  const [membersLoading, setMembersLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!form.room_id) { setRoomMembers([]); return; }
+    setMembersLoading(true);
+    fetch(`/api/rooms/${form.room_id}/members`)
+      .then((r) => r.ok ? r.json() : { members: [] })
+      .then((d) => setRoomMembers(d.members ?? []))
+      .catch(() => setRoomMembers([]))
+      .finally(() => setMembersLoading(false));
+  }, [form.room_id]);
 
   function set<K extends keyof EventFormData>(key: K, value: EventFormData[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -662,6 +679,49 @@ function EventModal({ editing, defaults, onSave, onDelete, onClose }: ModalProps
                       );
                     })}
                   </div>
+                </div>
+
+
+                {/* Room */}
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                    <DoorOpen className="w-3 h-3" />Sala
+                  </label>
+                  <select value={form.room_id} onChange={(e) => set("room_id", e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border-2 border-slate-200 text-sm text-slate-700 outline-none focus:bg-white focus:border-slate-300 transition-all">
+                    <option value="">— Sin sala —</option>
+                    {rooms.map((r) => (
+                      <option key={r.id} value={r.id}>{r.emoji} {r.name}</option>
+                    ))}
+                  </select>
+                  {form.room_id && (
+                    <div className="mt-2">
+                      {membersLoading ? (
+                        <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                          <span className="w-3 h-3 border-2 border-slate-300 border-t-[#050040] rounded-full animate-spin inline-block" />
+                          Cargando miembros…
+                        </div>
+                      ) : roomMembers.length > 0 ? (
+                        <div className="bg-[#050040]/4 border border-[#050040]/10 rounded-xl p-3">
+                          <p className="text-[10px] font-bold text-[#050040] uppercase tracking-wide mb-2">
+                            Miembros de la sala ({roomMembers.length})
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {roomMembers.map((m) => (
+                              <span key={m.id} className="inline-flex items-center gap-1 text-[11px] bg-white border border-[#050040]/15 rounded-full px-2.5 py-0.5 text-slate-700 font-medium">
+                                <div className="w-3.5 h-3.5 rounded-full bg-[#050040]/10 flex items-center justify-center text-[8px] font-bold text-[#050040]">
+                                  {m.name[0]}
+                                </div>
+                                {m.name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 mt-1">Esta sala no tiene miembros registrados.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Notification card */}
@@ -1233,6 +1293,7 @@ export default function MeetCalendarView() {
   const [view,        setView]        = React.useState<CalView>("month");
   const [currentDate, setCurrentDate] = React.useState(() => new Date(today));
   const [events,      setEvents]      = React.useState<CalEvent[]>([]);
+  const [rooms,       setRooms]       = React.useState<{ id: string; name: string; emoji: string; color: string }[]>([]);
   const [loading,     setLoading]     = React.useState(true);
 
   // Event modal
@@ -1254,6 +1315,10 @@ export default function MeetCalendarView() {
   const [shareOpen, setShareOpen] = React.useState(false);
 
   // ── Load events ──────────────────────────────────────────────────────────────
+  React.useEffect(() => {
+    fetch("/api/rooms").then((r) => r.ok ? r.json() : { rooms: [] }).then((d) => setRooms(d.rooms ?? [])).catch(() => {});
+  }, []);
+
   React.useEffect(() => { loadEvents(); }, [view, currentDate]);
 
   async function loadEvents() {
@@ -1629,6 +1694,7 @@ export default function MeetCalendarView() {
         <EventModal
           editing={editingEvent}
           defaults={modalDefs}
+          rooms={rooms}
           onSave={async (payload) => {
             if (editingEvent) await updateEvent(editingEvent.id, payload);
             else await createEvent(payload);
