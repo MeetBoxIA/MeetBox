@@ -32,13 +32,28 @@ y devuelves EXCLUSIVAMENTE un objeto JSON válido (sin texto adicional, sin mark
   ]
 }
 
-Reglas:
+Reglas generales:
 - Para tareas técnicas usa destination "jira"; decisiones "notion"; riesgos "slack"; notas "meetbook".
-- Los "reminders" son tareas fantasma: cosas mencionadas en la reunión que son pequeñas pero importantes,
-  que no necesitan un ticket formal sino solo que el usuario no las olvide.
-  Ej: "Confirmar disponibilidad con Carlos", "Revisar contrato antes del jueves", "Enviar enlace a Ana".
 - Extrae solo lo que realmente aparece en la transcripción. No inventes.
-- Responde en el mismo idioma de la transcripción.`;
+- Responde en el mismo idioma de la transcripción.
+
+Reglas para "reminders" — DETECCIÓN POR PALABRAS CLAVE (muy importante):
+Crea un reminder cuando en la transcripción aparezca CUALQUIERA de estas señales de lenguaje:
+  • Frases literales: "recordemos que", "recuerden que", "no olvidar", "no olviden", "hay que recordar",
+    "tener en cuenta", "ojo con", "aviso importante", "pendiente de", "queda pendiente",
+    "acordarse de", "antes del [día/fecha]", "para el [día/fecha]", "avisad a", "avisar a",
+    "recuérdame", "recuérdale", "agenda pendiente", "quedamos en", "lo apunto", "lo anoto"
+  • Compromisos informales sin ticket: "yo me encargo de X", "te mando X mañana", "lo reviso esta semana"
+  • Fechas con acción pequeña: cualquier frase con una fecha futura + una acción concreta pequeña
+  • "Tareas fantasma": cosas que se dicen de paso y que si nadie las apunta se pierden
+
+Ejemplos de reminders válidos:
+  "Recordemos enviar el contrato antes del viernes" → reminder: "Enviar contrato antes del viernes"
+  "Ojo que hay que avisar a marketing del cambio" → reminder: "Avisar a marketing del cambio"
+  "No olvidéis la reunión del jueves a las 10" → reminder: "Reunión del jueves a las 10"
+  "Agenda para la próxima semana revisar los KPIs" → reminder: "Revisar KPIs la próxima semana"
+  "Quedamos en que Juan revisa el presupuesto" → reminder: "Juan revisa el presupuesto"`;
+
 
 interface OpenAIChatResponse {
   choices?: { message?: { content?: string } }[];
@@ -187,11 +202,19 @@ function heuristicAnalysis(transcript: string): AnalysisResult {
 
   const nextSteps = sentences.filter((s) => /próximo paso|agendar|retrospectiva|siguiente/i.test(s)).slice(0, 4);
 
+  // Reminder keyword detection — mirrors the LLM system prompt rules
+  const REMINDER_RE = /recordemo[s]?|recuerden|recuérda[mn]e|no olvid[eéa]|no olvidéis|hay que recordar|tener en cuenta|ojo con|aviso\b|avisad? a|avisar a|pendiente de|queda pendiente|acordarse de|antes del|para el (lunes|martes|miércoles|jueves|viernes|sábado|domingo|próximo|siguiente)|agenda pendiente|quedamos en|lo apunto|lo anoto|me encargo de|te mando|lo reviso esta|lo reviso la próxima/i;
+  const reminders = sentences
+    .filter((s) => REMINDER_RE.test(s))
+    .slice(0, 6)
+    .map((s) => ({ title: s.slice(0, 80), deadline_hint: null as string | null }));
+
   return {
     headline:   sentences[0]?.slice(0, 90) ?? "Reunión procesada",
     summary:    sentences.slice(0, 3).join(". ") + ".",
     next_steps: nextSteps,
     tasks, decisions, risks,
     mentions:   names.slice(0, 6).map((n) => ({ name: n, count: 1 })),
+    reminders,
   };
 }

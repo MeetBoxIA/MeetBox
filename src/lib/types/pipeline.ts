@@ -88,6 +88,11 @@ export interface TranscriptSegment {
 }
 
 // ── AI analysis output (the shape the LLM is asked to return) ─────────────────
+export interface AnalyzedReminder {
+  title:         string;
+  deadline_hint: string | null;
+}
+
 export interface AnalysisResult {
   headline:    string;
   summary:     string;
@@ -96,6 +101,7 @@ export interface AnalysisResult {
   decisions:   AnalyzedDecision[];
   risks:       AnalyzedRisk[];
   mentions:    AnalyzedMention[];
+  reminders?:  AnalyzedReminder[];
 }
 
 export interface AnalyzedTask {

@@ -15,17 +15,17 @@ import {
   Cpu, ChevronDown, DoorOpen, Mic, CalendarCheck,
   ClipboardList, History, FileText, Bell, Layers,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
 import { SiJira, SiSlack, SiNotion } from "react-icons/si";
 import { TbBrandTeams } from "react-icons/tb";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type ActionStatus  = "pending" | "approved" | "rejected" | "executing" | "executed" | "failed";
 type ActionType    = "task" | "decision" | "risk" | "next_step" | "event" | "note";
-type Destination   = "jira" | "slack" | "notion" | "teams" | "meetcalendar" | "meetbook";
+type Destination   = "jira" | "slack" | "notion" | "teams" | "meetbook";
 type Priority      = "low" | "medium" | "high" | "critical";
 type SessionStatus = "processing" | "pending_review" | "approved" | "executed" | "partial" | "rejected";
-type WizardStep    = 0 | 1 | 2 | 3;
+type WizardStep    = 0 | 1 | 2 | 3 | 4;
 type Mode          = "summary" | "actions" | "reminders" | "full";
 
 interface SessionReminder { id: string; title: string; source: "ai" | "manual"; deadline: string | null; completed: boolean; session_id: string | null; }
@@ -58,7 +58,6 @@ const DEST_META: Record<Destination, { label: string; Icon: React.ElementType; c
   slack:        { label: "Slack",        Icon: SiSlack,      color: "#4A154B", bg: "#F5F0F8" },
   notion:       { label: "Notion",       Icon: SiNotion,     color: "#191919", bg: "#F5F5F5" },
   teams:        { label: "Teams",        Icon: TbBrandTeams, color: "#5059C9", bg: "#EEEEFF" },
-  meetcalendar: { label: "MeetCalendar", Icon: Calendar,     color: "#050040", bg: "#EEEEF8" },
   meetbook:     { label: "MeetBook",     Icon: BookOpen,     color: "#7c3aed", bg: "#F3EEFF" },
 };
 const TYPE_META: Record<ActionType, { label: string; color: string }> = {
@@ -83,25 +82,6 @@ const STATUS_META: Record<SessionStatus, { label: string; dot: string }> = {
   partial:        { label: "Parcial",     dot: "#ea580c" },
   rejected:       { label: "Rechazada",   dot: "#dc2626" },
 };
-
-const STEPS = [
-  { icon: Mic,           label: "Reunión",    hint: "Elige qué reunión procesar" },
-  { icon: DoorOpen,      label: "Sala",       hint: "Asigna el equipo de trabajo" },
-  { icon: CalendarCheck, label: "Calendario", hint: "Confirma el evento del calendario" },
-  { icon: ClipboardList, label: "Acciones",   hint: "Revisa y aprueba las acciones" },
-];
-
-function stepsForMode(m: Mode | null) {
-  if (!m || m === "actions" || m === "full") return STEPS;
-  if (m === "summary") return [
-    { icon: Mic,      label: "Reunión",  hint: "Elige qué reunión procesar" },
-    { icon: FileText, label: "Resumen",  hint: "Resumen generado por IA"    },
-  ];
-  return [
-    { icon: Mic,  label: "Reunión",        hint: "Elige qué reunión procesar" },
-    { icon: Bell, label: "Recordatorios",  hint: "Tareas detectadas por IA"   },
-  ];
-}
 
 // ── Mode selector ──────────────────────────────────────────────────────────────
 const MODE_OPTIONS: { id: Mode; icon: React.ElementType; color: string; bg: string; title: string; desc: string; badge?: string }[] = [
@@ -156,6 +136,265 @@ function ModeSelector({ onSelect }: { onSelect: (m: Mode) => void }) {
   );
 }
 
+// ── SwipeReminderCard ──────────────────────────────────────────────────────────
+const SWIPE_THRESHOLD = 80;
+
+function SwipeReminderCard({ item, decision, onDecide }: {
+  item: ActionItem;
+  decision: "accepted" | "skipped" | null;
+  onDecide: (id: string, d: "accepted" | "skipped") => void;
+}) {
+  const x = useMotionValue(0);
+  const acceptOpacity  = useTransform(x, [0, SWIPE_THRESHOLD],   [0, 1]);
+  const skipOpacity    = useTransform(x, [-SWIPE_THRESHOLD, 0],  [1, 0]);
+  const bgColor        = useTransform(x, [-SWIPE_THRESHOLD, 0, SWIPE_THRESHOLD], ["#fee2e2", "#ffffff", "#dcfce7"]);
+
+  const TYPE_META_LOCAL: Record<string, { label: string; color: string; bg: string }> = {
+    task:      { label: "Tarea",        color: "#0891b2", bg: "#f0f9ff" },
+    decision:  { label: "Decisión",     color: "#7c3aed", bg: "#f5f3ff" },
+    risk:      { label: "Riesgo",       color: "#dc2626", bg: "#fef2f2" },
+    next_step: { label: "Próx. paso",   color: "#d97706", bg: "#fef9ee" },
+    event:     { label: "Recordatorio", color: "#d97706", bg: "#fef9ee" },
+    note:      { label: "Nota",         color: "#6b7280", bg: "#f9fafb" },
+  };
+  const meta = TYPE_META_LOCAL[item.type] ?? TYPE_META_LOCAL.note;
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl">
+      {/* Accept background */}
+      <motion.div style={{ opacity: acceptOpacity }}
+        className="absolute inset-0 bg-emerald-100 rounded-2xl flex items-center justify-end pr-6 pointer-events-none">
+        <div className="flex flex-col items-center gap-1">
+          <Bell className="w-6 h-6 text-emerald-600" />
+          <span className="text-xs font-bold text-emerald-600">Recordatorio</span>
+        </div>
+      </motion.div>
+      {/* Skip background */}
+      <motion.div style={{ opacity: skipOpacity }}
+        className="absolute inset-0 bg-red-100 rounded-2xl flex items-center justify-start pl-6 pointer-events-none">
+        <div className="flex flex-col items-center gap-1">
+          <X className="w-6 h-6 text-red-500" />
+          <span className="text-xs font-bold text-red-500">Omitir</span>
+        </div>
+      </motion.div>
+
+      <motion.div
+        style={{ x, backgroundColor: bgColor }}
+        drag="x"
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={0.3}
+        onDragEnd={(_, info) => {
+          if (info.offset.x > SWIPE_THRESHOLD) onDecide(item.id, "accepted");
+          else if (info.offset.x < -SWIPE_THRESHOLD) onDecide(item.id, "skipped");
+        }}
+        className={cn(
+          "relative border-2 rounded-2xl p-4 cursor-grab active:cursor-grabbing select-none",
+          decision === "accepted" ? "border-emerald-400 bg-emerald-50"
+          : decision === "skipped" ? "border-slate-200 bg-slate-50 opacity-50"
+          : "border-slate-200 bg-white",
+        )}
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                style={{ backgroundColor: meta.bg, color: meta.color }}>{meta.label}</span>
+              {decision === "accepted" && <span className="text-[10px] font-bold text-emerald-600">✓ Recordatorio</span>}
+            </div>
+            <p className={cn("text-sm font-semibold text-slate-800", decision === "skipped" && "line-through text-slate-400")}>
+              {item.title}
+            </p>
+            {item.description && (
+              <p className="text-xs text-slate-400 mt-1 line-clamp-2">{item.description}</p>
+            )}
+          </div>
+          {/* Quick buttons */}
+          <div className="flex gap-1.5 shrink-0">
+            <button onClick={() => onDecide(item.id, "skipped")}
+              className={cn("w-8 h-8 rounded-xl flex items-center justify-center transition-colors",
+                decision === "skipped" ? "bg-red-100 text-red-500" : "bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-500")}>
+              <X className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => onDecide(item.id, "accepted")}
+              className={cn("w-8 h-8 rounded-xl flex items-center justify-center transition-colors",
+                decision === "accepted" ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-400 hover:bg-emerald-100 hover:text-emerald-600")}>
+              <Bell className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ── Session selector (same visual style as ModeSelector) ──────────────────────
+function SessionSelector({
+  sessions, loading, selectedId, mode, canProceed,
+  onSelect, onBack, onNext,
+}: {
+  sessions: ApiSession[];
+  loading: boolean;
+  selectedId: string | null;
+  mode: Mode;
+  canProceed: boolean;
+  onSelect: (id: string) => void;
+  onBack:  () => void;
+  onNext:  () => void;
+}) {
+  const [showAll, setShowAll] = React.useState(false);
+  const visible = showAll ? sessions : sessions.slice(0, 4);
+
+  const question =
+    mode === "summary"   ? "¿Qué reunión quieres resumir?"            :
+    mode === "reminders" ? "¿De qué reunión extraer recordatorios?"    :
+                           "¿Qué reunión quieres procesar?";
+  const subtitle =
+    mode === "summary"   ? "La IA generará un resumen ejecutivo de la reunión seleccionada." :
+    mode === "reminders" ? "Se extraerán las tareas detectadas por IA y se añadirán a tus recordatorios." :
+                           "Selecciona la grabación pendiente de revisión.";
+
+  const nextLabel =
+    mode === "summary" || mode === "reminders" ? "Generar" : "Siguiente";
+
+  return (
+    <div className="flex h-full overflow-y-auto bg-slate-50 px-6 py-10">
+      <div className="w-full max-w-2xl mx-auto">
+
+        {/* ── Header ── */}
+        <div className="text-center mb-8">
+          <div className="w-14 h-14 rounded-2xl bg-[#050040] flex items-center justify-center mx-auto mb-4 shadow-md">
+            <Mic className="w-7 h-7 text-white" />
+          </div>
+          <h1 className="text-3xl font-bold text-slate-900">{question}</h1>
+          <p className="text-base text-slate-400 mt-2">{subtitle}</p>
+        </div>
+
+        {/* ── Session cards ── */}
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <RefreshCw className="w-6 h-6 text-slate-300 animate-spin" />
+          </div>
+        ) : sessions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+              <Mic className="w-8 h-8 text-slate-300" />
+            </div>
+            <p className="text-lg font-bold text-slate-600">No hay reuniones grabadas</p>
+            <p className="text-sm text-slate-400 mt-1.5 max-w-xs">
+              Graba una reunión con MeetBox Desktop. Las sesiones procesadas aparecerán aquí.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-4">
+              {visible.map((s, idx) => {
+                const st  = STATUS_META[s.status];
+                const sel = s.id === selectedId;
+                return (
+                  <motion.button
+                    key={s.id}
+                    onClick={() => onSelect(s.id)}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    whileHover={{ scale: 1.02, y: -3, boxShadow: "0 8px 24px -4px rgba(0,0,0,0.10)" }}
+                    whileTap={{ scale: 0.98 }}
+                    transition={{ delay: idx * 0.06, duration: 0.3 }}
+                    className={cn(
+                      "relative text-left p-6 rounded-2xl border-2 bg-white group transition-colors",
+                      sel ? "border-[#050040] shadow-md" : "border-slate-200 hover:border-slate-300",
+                    )}
+                  >
+                    {/* Status badge */}
+                    <span className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: st.dot + "20", color: st.dot }}>
+                      {st.label}
+                    </span>
+
+                    {/* Icon */}
+                    <div className={cn(
+                      "w-12 h-12 rounded-xl flex items-center justify-center mb-4 text-2xl",
+                      sel ? "bg-[#050040]/10" : "bg-slate-100",
+                    )}>
+                      🎙️
+                    </div>
+
+                    <h3 className={cn(
+                      "text-base font-bold leading-snug line-clamp-2 group-hover:text-[#050040] transition-colors",
+                      sel ? "text-[#050040]" : "text-slate-800",
+                    )}>
+                      {s.meeting_name}
+                    </h3>
+                    <p className="text-sm text-slate-400 mt-1.5">
+                      {s.meeting_date ? fmtDate(s.meeting_date) : "Sin fecha"}
+                      {s.duration_seconds ? ` · ${fmtDur(s.duration_seconds)}` : ""}
+                    </p>
+
+                    {/* Stats */}
+                    {(s.tasks_count > 0 || s.decisions_count > 0) && (
+                      <div className="flex gap-3 mt-3">
+                        {s.tasks_count > 0 && (
+                          <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                            {s.tasks_count} tareas
+                          </span>
+                        )}
+                        {s.decisions_count > 0 && (
+                          <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                            {s.decisions_count} decisiones
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Selected indicator */}
+                    {sel && (
+                      <div className="absolute bottom-3 right-3 w-6 h-6 rounded-full bg-[#050040] flex items-center justify-center">
+                        <Check className="w-3.5 h-3.5 text-white" />
+                      </div>
+                    )}
+                  </motion.button>
+                );
+              })}
+            </div>
+
+            {/* Ver todas link */}
+            {sessions.length > 4 && !showAll && (
+              <div className="text-center mt-4">
+                <button
+                  onClick={() => setShowAll(true)}
+                  className="text-sm text-slate-400 hover:text-[#050040] transition-colors inline-flex items-center gap-1.5 underline underline-offset-2"
+                >
+                  ver todas las reuniones ({sessions.length})
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Footer navigation ── */}
+        <div className="flex items-center justify-between mt-10 pt-6 border-t border-slate-200">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />Cambiar modo
+          </button>
+          <motion.button
+            onClick={onNext}
+            disabled={!canProceed}
+            whileHover={canProceed ? { scale: 1.02 } : {}}
+            whileTap={canProceed ? { scale: 0.98 } : {}}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {nextLabel}
+            {nextLabel === "Siguiente" ? <ArrowRight className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+          </motion.button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
@@ -168,158 +407,21 @@ function fmtDur(secs: number) {
   return h > 0 ? `${h}h ${m}m` : `${m} min`;
 }
 
-function DestBadge({ dest }: { dest: Destination }) {
-  const { label, Icon, color, bg } = DEST_META[dest];
+function DestBadge({ dest }: { dest: string }) {
+  const meta = DEST_META[dest as Destination];
+  if (!meta) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-500 shrink-0">
+        {dest}
+      </span>
+    );
+  }
+  const { label, Icon, color, bg } = meta;
   return (
     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0"
       style={{ backgroundColor: bg, color }}>
       <Icon className="w-3 h-3" style={{ color }} />{label}
     </span>
-  );
-}
-
-// ── Left stepper ───────────────────────────────────────────────────────────────
-function StepperPanel({
-  step, session, room, calMatch, approvedCount, totalCount,
-  onHistory, pendingCount, mode,
-}: {
-  step: WizardStep;
-  session: ApiSession | null;
-  room: Room | null;
-  calMatch: NearbyEvent | null;
-  approvedCount: number;
-  totalCount: number;
-  onHistory: () => void;
-  pendingCount: number;
-  mode: Mode | null;
-}) {
-  const visibleSteps = stepsForMode(mode);
-  return (
-    <div className="flex flex-col h-full bg-white border-r border-slate-100">
-      {/* Logo */}
-      <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-[#050040] flex items-center justify-center shrink-0">
-            <Cpu className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <p className="text-sm font-bold text-slate-900">MeetAction</p>
-            {pendingCount > 0 && (
-              <p className="text-[11px] text-[#050040] font-semibold">{pendingCount} pendientes</p>
-            )}
-          </div>
-        </div>
-        <button onClick={onHistory}
-          className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
-          <History className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Steps */}
-      <div className="flex-1 overflow-y-auto px-5 py-6 space-y-2">
-        {visibleSteps.map((s, i) => {
-          const done    = i < step;
-          const current = i === step;
-          const pending = i > step;
-          const Icon    = s.icon;
-
-          return (
-            <div key={i} className="relative">
-              {/* Connector line */}
-              {i < STEPS.length - 1 && (
-                <div className={cn(
-                  "absolute left-5 top-[3.25rem] w-px h-4 transition-colors",
-                  done ? "bg-emerald-300" : "bg-slate-200",
-                )} />
-              )}
-
-              <div className={cn(
-                "flex items-start gap-3 p-3.5 rounded-2xl transition-all",
-                current ? "bg-[#050040]/6 border border-[#050040]/12"
-                  : done  ? "bg-emerald-50/60 border border-emerald-100"
-                  : "border border-transparent",
-              )}>
-                {/* Circle icon */}
-                <div className={cn(
-                  "w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-base transition-all",
-                  current ? "bg-[#050040] text-white shadow-md shadow-[#050040]/25"
-                    : done  ? "bg-emerald-500 text-white"
-                    : "bg-slate-100 text-slate-400",
-                )}>
-                  {done ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
-                </div>
-
-                <div className="flex-1 min-w-0 pt-0.5">
-                  <p className={cn(
-                    "text-sm font-bold leading-tight",
-                    current ? "text-[#050040]" : done ? "text-emerald-700" : "text-slate-400",
-                  )}>{s.label}</p>
-
-                  {/* Completed context */}
-                  {done && (
-                    <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-                      className="mt-1.5 space-y-0.5">
-                      {i === 0 && session && (
-                        <>
-                          <p className="text-xs font-semibold text-slate-700 truncate">{session.meeting_name}</p>
-                          <p className="text-[11px] text-slate-500">
-                            {session.meeting_date ? fmtDate(session.meeting_date) : "Sin fecha"}
-                            {session.duration_seconds ? ` · ${fmtDur(session.duration_seconds)}` : ""}
-                          </p>
-                        </>
-                      )}
-                      {i === 1 && room && (
-                        <>
-                          <p className="text-xs font-semibold text-slate-700">{room.emoji} {room.name}</p>
-                        </>
-                      )}
-                      {i === 1 && !room && (
-                        <p className="text-[11px] text-slate-400 italic">Sin sala asignada</p>
-                      )}
-                      {i === 2 && calMatch && (
-                        <>
-                          <p className="text-xs font-semibold text-slate-700 truncate">{calMatch.title}</p>
-                          <p className="text-[11px] text-slate-500">{fmtDate(calMatch.start_at)} · {fmtTime(calMatch.start_at)}</p>
-                        </>
-                      )}
-                      {i === 2 && !calMatch && (
-                        <p className="text-[11px] text-slate-400 italic">Sin evento asignado</p>
-                      )}
-                    </motion.div>
-                  )}
-
-                  {/* Current hint */}
-                  {current && (
-                    <p className="text-[11px] text-[#050040]/60 mt-0.5">{s.hint}</p>
-                  )}
-
-                  {/* Pending hint */}
-                  {pending && (
-                    <p className="text-[11px] text-slate-400 mt-0.5">{s.hint}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Approved actions summary on step 3 */}
-        {step === 3 && totalCount > 0 && (
-          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-            className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
-            <p className="text-xs font-bold text-slate-600 mb-2">Progreso de aprobación</p>
-            <div className="flex items-center gap-2 mb-2">
-              <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                  style={{ width: `${(approvedCount / totalCount) * 100}%` }} />
-              </div>
-              <span className="text-xs font-bold text-slate-700">{approvedCount}/{totalCount}</span>
-            </div>
-            <p className="text-[11px] text-slate-500">acciones aprobadas</p>
-          </motion.div>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -469,13 +571,16 @@ export default function MeetActionView() {
   const [sessionReminders,  setSessionReminders]  = React.useState<SessionReminder[]>([]);
   const [filterType,   setFilterType]   = React.useState<ActionType | "all">("all");
   const [search,       setSearch]       = React.useState("");
+  const [reminderDecisions, setReminderDecisions] = React.useState<Record<string, "accepted" | "skipped">>({});
 
   const session      = sessions.find((s) => s.id === selectedId) ?? null;
-  const approved     = items.filter((i) => i.status === "approved");
-  const rejected     = items.filter((i) => i.status === "rejected");
-  const pending      = items.filter((i) => i.status === "pending");
+  // Integration items = items that go to real integrations (exclude stale meetcalendar)
+  const integrationItems = items.filter((i) => (i.destination as string) !== "meetcalendar");
+  const approved     = integrationItems.filter((i) => i.status === "approved");
+  const rejected     = integrationItems.filter((i) => i.status === "rejected");
+  const pending      = integrationItems.filter((i) => i.status === "pending");
   const destinations = [...new Set(approved.map((i) => i.destination))];
-  const filtered     = items.filter((i) => {
+  const filtered     = integrationItems.filter((i) => {
     if (filterType !== "all" && i.type !== filterType) return false;
     if (search && !i.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -504,12 +609,17 @@ export default function MeetActionView() {
   }, [loadSessions, loadHistory]);
 
   React.useEffect(() => {
-    if (step !== 3 || !selectedId) return;
+    // For "reminders" mode load at swipe step 1.
+    // For "actions"/"full" load at step 3 (swipe step) so items are ready
+    // both for the swipe review AND the subsequent integration review (step 4).
+    const loadAt = mode === "reminders" ? 1 : 3;
+    if (step !== loadAt || !selectedId) return;
     setItemsLoading(true);
     fetch(`/api/meetaction/sessions/${selectedId}/items`)
-      .then((r) => r.ok ? r.json() : { items: [] }).then((d) => setItems(d.items ?? []))
-      .catch(() => setItems([])).finally(() => setItemsLoading(false));
-  }, [step, selectedId]);
+      .then((r) => r.ok ? r.json() : { items: [] })
+      .then((d) => { setItems(d.items ?? []); setItemsLoading(false); })
+      .catch(() => { setItems([]); setItemsLoading(false); });
+  }, [step, selectedId, mode]);
 
   React.useEffect(() => {
     if (step !== 2 || !session?.meeting_date) return;
@@ -538,7 +648,11 @@ export default function MeetActionView() {
     await fetch(`/api/meetaction/sessions/${selectedId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ calendar_event_id: ev.id, calendar_match_pct: 85 }) });
   }
 
-  function canProceed() { if (step === 0) return selectedId !== null; if (step === 3) return approved.length > 0; return true; }
+  function canProceed() {
+    if (step === 0) return selectedId !== null;
+    if ((mode === "actions" || mode === "full") && step === 4) return approved.length > 0;
+    return true;
+  }
 
   function navigate(next: WizardStep, direction: "fwd" | "back") {
     if (animating) return; setDir(direction); setAnimating(true);
@@ -550,22 +664,39 @@ export default function MeetActionView() {
     setExecuting(false); setExecDone(true);
   }
 
-  async function handleExecuteReminders() {
-    setExecuting(true); setExecStep(0);
+  async function handleSaveAndExecuteReminders() {
+    setExecuting(true);
+    const accepted = items.filter((i) => reminderDecisions[i.id] === "accepted");
     try {
-      const r = await fetch("/api/recordatorios");
-      const d = r.ok ? await r.json() : { reminders: [] };
-      const found = ((d.reminders ?? []) as SessionReminder[]).filter((x) => x.session_id === selectedId);
-      setSessionReminders(found);
+      await Promise.all(
+        accepted.map((item) =>
+          fetch("/api/recordatorios", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title:      item.title,
+              source:     "ai",
+              deadline:   null,
+              session_id: selectedId,
+            }),
+          }),
+        ),
+      );
+      setSessionReminders(
+        accepted.map((i) => ({ id: i.id, title: i.title, source: "ai" as const, deadline: null, completed: false, session_id: selectedId })),
+      );
     } finally {
-      setExecuting(false); setExecDone(true);
+      setExecuting(false);
+      setExecDone(true);
     }
   }
 
   function goNext() {
-    if (mode === "summary"   && step === 0) { handleExecuteSummary();   return; }
-    if (mode === "reminders" && step === 0) { handleExecuteReminders(); return; }
-    if (step < 3) navigate((step + 1) as WizardStep, "fwd");
+    if (mode === "summary" && step === 0) { handleExecuteSummary(); return; }
+    if (mode === "reminders" && step === 1) { handleSaveAndExecuteReminders(); return; }
+    if ((mode === "actions" || mode === "full") && step === 4) { handleExecute(); return; }
+    const maxStep = mode === "summary" ? 0 : mode === "reminders" ? 1 : 4;
+    if (step < maxStep) navigate((step + 1) as WizardStep, "fwd");
   }
   function goBack() { if (step > 0) navigate((step - 1) as WizardStep, "back"); }
 
@@ -574,6 +705,24 @@ export default function MeetActionView() {
     const totalSteps = destinations.length + 3; setExecuting(true); setExecStep(0);
     let s = 0; const tick = setInterval(() => { s = Math.min(s + 1, totalSteps - 1); setExecStep(s); }, 700);
     try {
+      // Save reminders accepted in the swipe step to /api/recordatorios
+      const acceptedReminderItems = items.filter((i) => reminderDecisions[i.id] === "accepted");
+      if (acceptedReminderItems.length > 0) {
+        await Promise.all(
+          acceptedReminderItems.map((item) =>
+            fetch("/api/recordatorios", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title:      item.title,
+                source:     "ai",
+                deadline:   null,
+                session_id: selectedId,
+              }),
+            }),
+          ),
+        );
+      }
       await fetch(`/api/meetaction/sessions/${selectedId}/approve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approve: approved.map((i) => i.id), reject: rejected.map((i) => i.id) }) });
       await fetch(`/api/meetaction/sessions/${selectedId}/execute`, { method: "POST" });
     } catch { /* en historial */ } finally {
@@ -600,7 +749,8 @@ export default function MeetActionView() {
   function resetWizard() {
     setMode(null); setStep(0); setSelectedId(null); setSelectedRoom(null); setSelectedCalMatch(null);
     setItems([]); setRoomMembers([]); setMatchedPeople([]); setUnmatchedPpl([]); setMatchPct(0);
-    setExecDone(false); setExecStep(0); setSearch(""); setFilterType("all"); setSessionReminders([]); loadSessions();
+    setExecDone(false); setExecStep(0); setSearch(""); setFilterType("all"); setSessionReminders([]);
+    setReminderDecisions({}); loadSessions();
   }
 
   const historyGroups = React.useMemo(() => {
@@ -613,6 +763,24 @@ export default function MeetActionView() {
   // Mode selector
   // ─────────────────────────────────────────────────────────────────────────
   if (!mode) return <ModeSelector onSelect={(m) => setMode(m)} />;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Session selector — same visual style as ModeSelector
+  // ─────────────────────────────────────────────────────────────────────────
+  if (step === 0 && !executing && !execDone) {
+    return (
+      <SessionSelector
+        sessions={sessions}
+        loading={loading}
+        selectedId={selectedId}
+        mode={mode}
+        canProceed={selectedId !== null}
+        onSelect={(id) => setSelectedId(id)}
+        onBack={() => { setMode(null); setStep(0); setSelectedId(null); }}
+        onNext={goNext}
+      />
+    );
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Historial
@@ -666,15 +834,9 @@ export default function MeetActionView() {
   if (executing || execDone) {
     // ── Summary / Reminders modes: lightweight result screen ─────────────────
     if (mode === "summary" || mode === "reminders") {
-      const execStepIdx = mode === "summary" ? 1 : 1;
       return (
-        <div className="flex h-full overflow-hidden">
-          <div className="w-64 shrink-0">
-            <StepperPanel step={execStepIdx as WizardStep} session={session} room={null} calMatch={null}
-              approvedCount={0} totalCount={0}
-              onHistory={() => setShowHistory(true)} pendingCount={pendingCount} mode={mode} />
-          </div>
-          <div className="flex-1 overflow-y-auto bg-slate-50 flex items-center justify-center p-8">
+        <div className="flex h-full overflow-y-auto bg-slate-50">
+          <div className="w-full flex items-center justify-center p-8">
             <div className="w-full max-w-lg">
               {executing ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-5">
@@ -762,13 +924,8 @@ export default function MeetActionView() {
     // ── Actions / Full mode: original progress screen ─────────────────────────
     const totalSteps = destinations.length + 3;
     return (
-      <div className="flex h-full overflow-hidden">
-        <div className="w-64 shrink-0">
-          <StepperPanel step={3} session={session} room={selectedRoom} calMatch={selectedCalMatch}
-            approvedCount={approved.length} totalCount={items.length}
-            onHistory={() => setShowHistory(true)} pendingCount={pendingCount} mode={mode} />
-        </div>
-        <div className="flex-1 overflow-y-auto bg-slate-50 flex items-center justify-center p-8">
+      <div className="flex h-full overflow-y-auto bg-slate-50">
+        <div className="w-full flex items-center justify-center p-8">
           <div className="w-full max-w-lg">
             <div className="bg-white rounded-3xl border border-slate-100 shadow-[0_8px_40px_-8px_rgba(5,0,64,0.10)] overflow-hidden">
               <div className="bg-[#050040] px-8 py-7 text-white text-center">
@@ -787,7 +944,7 @@ export default function MeetActionView() {
                   { label: "Transcripción completada", minStep: 1 },
                   { label: "Resumen generado",         minStep: 2 },
                   { label: "Acciones identificadas",   minStep: 3 },
-                  ...destinations.map((d, i) => ({ label: `Enviando a ${DEST_META[d as Destination].label}`, minStep: 4 + i })),
+                  ...destinations.map((d, i) => ({ label: `Enviando a ${DEST_META[d as Destination]?.label ?? d}`, minStep: 4 + i })),
                 ].map(({ label, minStep }) => {
                   const s = execStep > minStep ? "done" : execStep === minStep ? "running" : "pending";
                   return (
@@ -836,305 +993,271 @@ export default function MeetActionView() {
   // ─────────────────────────────────────────────────────────────────────────
   // Wizard principal
   // ─────────────────────────────────────────────────────────────────────────
+
+  // ── Progress dots helper ──────────────────────────────────────────────────
+  const totalStepsForMode = mode === "summary" ? 1 : mode === "reminders" ? 2 : 5;
+
+  const STEP_META: Record<number, { icon: React.ElementType; title: string; subtitle: string; color: string }> = {
+    1: { icon: DoorOpen,      title: "¿A qué workspace pertenece?",              subtitle: "La IA comparará los participantes de la grabación con los miembros del workspace.", color: "#059669" },
+    2: { icon: CalendarCheck, title: "¿Con qué evento del calendario coincide?", subtitle: "Selecciona el evento más cercano a la fecha de la grabación.",                        color: "#2563eb" },
+    3: { icon: Bell,          title: "Revisa los recordatorios detectados",       subtitle: "Desliza a la derecha para guardar como recordatorio, a la izquierda para omitir.",    color: "#d97706" },
+    4: { icon: ClipboardList, title: "Revisa y aprueba las acciones",             subtitle: "Solo las acciones aprobadas se ejecutarán en las integraciones.",                    color: "#050040" },
+  };
+
+  const remindersSwipeStep = mode === "reminders" ? 1 : 3;
+  const actionsStep = 4;
+  const curMeta = STEP_META[step as 1 | 2 | 3 | 4];
+
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full overflow-y-auto bg-slate-50 px-6 py-10">
+      <div className="w-full max-w-2xl mx-auto flex flex-col">
 
-      {/* ── Stepper izquierdo ──────────────────────────────────────────── */}
-      <div className="w-64 shrink-0">
-        <StepperPanel step={step} session={session} room={selectedRoom} calMatch={selectedCalMatch}
-          approvedCount={approved.length} totalCount={items.length}
-          onHistory={() => setShowHistory(true)} pendingCount={pendingCount} mode={mode} />
-      </div>
-
-      {/* ── Contenido del paso ─────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
-
-        {/* Header del paso */}
-        <div className="bg-white border-b border-slate-100 px-8 py-6 shrink-0">
-          <h1 className="text-2xl font-bold text-slate-900">
-            {step === 0 && (mode === "summary" ? "¿Qué reunión quieres resumir?" : mode === "reminders" ? "¿De qué reunión extraer recordatorios?" : "¿Qué reunión quieres procesar?")}
-            {step === 1 && "¿A qué sala pertenece?"}
-            {step === 2 && "¿Con qué evento del calendario coincide?"}
-            {step === 3 && "Revisa y aprueba las acciones"}
-          </h1>
-          <p className="text-base text-slate-500 mt-1">
-            {step === 0 && (mode === "summary" ? "La IA generará un resumen ejecutivo de la reunión seleccionada." : mode === "reminders" ? "Se extraerán las tareas detectadas por IA y se añadirán a tus recordatorios." : "Selecciona la grabación pendiente de revisión.")}
-            {step === 1 && "La IA analizará las personas mencionadas vs los miembros de la sala."}
-            {step === 2 && "Selecciona el evento más cercano a la fecha de la grabación."}
-            {step === 3 && "Aprueba o rechaza cada acción. Solo las aprobadas se ejecutarán."}
-          </p>
+        {/* ── Progress dots ── */}
+        <div className="flex justify-center gap-2 mb-8">
+          {Array.from({ length: totalStepsForMode }, (_, i) => (
+            <div key={i}
+              className={cn(
+                "h-1.5 rounded-full transition-all duration-300",
+                i < step ? "w-6 bg-[#050040]" : i === step - 1 ? "w-8 bg-[#050040]" : "w-3 bg-slate-200",
+              )}
+            />
+          ))}
         </div>
 
-        {/* Contenido scrollable */}
-        <div className="flex-1 overflow-y-auto px-8 py-7">
-          <div className={cn(
-            "transition-all duration-260 max-w-3xl",
-            animating && dir === "fwd"  && "opacity-0 translate-x-4",
-            animating && dir === "back" && "opacity-0 -translate-x-4",
-            !animating && "opacity-100 translate-x-0",
-          )}>
+        {/* ── Step header ── */}
+        {curMeta && (
+          <div className="text-center mb-8">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-md"
+              style={{ backgroundColor: curMeta.color }}>
+              <curMeta.icon className="w-7 h-7 text-white" />
+            </div>
+            <h1 className="text-3xl font-bold text-slate-900">{curMeta.title}</h1>
+            <p className="text-base text-slate-400 mt-2">{curMeta.subtitle}</p>
+          </div>
+        )}
 
-            {/* ── Paso 0: Elegir reunión ── */}
-            {step === 0 && (
-              <div className="space-y-3">
-                {loading && <div className="flex items-center justify-center py-16"><RefreshCw className="w-6 h-6 text-slate-300 animate-spin" /></div>}
-                {!loading && sessions.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4"><Mic className="w-8 h-8 text-slate-300" /></div>
-                    <p className="text-lg font-bold text-slate-600">No hay reuniones grabadas</p>
-                    <p className="text-sm text-slate-400 mt-1.5 max-w-xs">Graba una reunión con MeetBox Desktop. Las sesiones procesadas aparecerán aquí.</p>
-                    <button onClick={loadSessions} className="mt-5 flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#050040] text-white text-sm font-semibold"><RefreshCw className="w-4 h-4" />Actualizar</button>
-                  </div>
-                )}
-                {sessions.map((s) => {
-                  const st = STATUS_META[s.status]; const sel = s.id === selectedId;
-                  return (
-                    <button key={s.id} onClick={() => setSelectedId(s.id)}
-                      className={cn("w-full text-left p-5 rounded-2xl border-2 transition-all", sel ? "border-[#050040] bg-[#050040]/5 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm")}>
-                      <div className="flex items-start gap-4">
-                        <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 text-2xl", sel ? "bg-[#050040]/10" : "bg-slate-100")}>🎙️</div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-3">
-                            <p className={cn("text-base font-bold truncate", sel ? "text-[#050040]" : "text-slate-800")}>{s.meeting_name}</p>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: st.dot }} />
-                              <span className="text-xs font-semibold text-slate-500">{st.label}</span>
-                            </div>
-                          </div>
-                          <p className="text-sm text-slate-400 mt-1">
-                            {s.meeting_date ? fmtDate(s.meeting_date) : "Sin fecha"}
-                            {s.duration_seconds ? ` · ${fmtDur(s.duration_seconds)}` : ""}
-                          </p>
-                          {s.people_mentioned.length > 0 && (
-                            <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-                              <Users className="w-3.5 h-3.5 text-slate-400" />
-                              {s.people_mentioned.slice(0, 5).map((p) => (
-                                <span key={p} className="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">{p}</span>
-                              ))}
-                              {s.people_mentioned.length > 5 && <span className="text-xs text-slate-400">+{s.people_mentioned.length - 5}</span>}
-                            </div>
-                          )}
-                        </div>
-                        {sel && <div className="w-6 h-6 rounded-full bg-[#050040] flex items-center justify-center shrink-0 mt-0.5"><Check className="w-3.5 h-3.5 text-white" /></div>}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* ── Paso 1: Sala ── */}
-            {step === 1 && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  {rooms.map((r) => {
-                    const sel = selectedRoom?.id === r.id;
-                    return (
-                      <button key={r.id} onClick={() => selectRoom(r)}
-                        className={cn("p-5 rounded-2xl border-2 text-left transition-all", sel ? "border-[#050040] bg-[#050040]/5 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm")}>
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0" style={{ backgroundColor: r.color + "20" }}>{r.emoji}</div>
-                          <p className={cn("text-base font-bold truncate flex-1", sel ? "text-[#050040]" : "text-slate-800")}>{r.name}</p>
-                          {sel && <div className="w-6 h-6 rounded-full bg-[#050040] flex items-center justify-center shrink-0"><Check className="w-3.5 h-3.5 text-white" /></div>}
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {rooms.length === 0 && (
-                    <div className="col-span-2 text-center py-12 text-slate-400">
-                      <DoorOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                      <p className="text-base">No tienes salas. Puedes continuar sin asignar sala.</p>
-                    </div>
-                  )}
-                </div>
-                {selectedRoom && (
-                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                    className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5 shadow-sm">
-                    <div className="flex items-center gap-3">
-                      <Sparkles className="w-5 h-5 text-[#050040]" />
-                      <p className="text-base font-bold text-slate-800">Análisis IA de personas</p>
-                      <span className="ml-auto text-2xl font-bold text-[#050040]">{matchPct}%</span>
-                    </div>
-                    <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-[#050040] rounded-full transition-all duration-700" style={{ width: `${matchPct}%` }} />
-                    </div>
-                    <p className="text-sm text-slate-500">de personas mencionadas coinciden con miembros de la sala</p>
-                    {matchedPeople.length > 0 && (
-                      <div>
-                        <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-3">Coincidencias</p>
-                        <div className="space-y-2">
-                          {matchedPeople.map(({ person, member_name }) => (
-                            <div key={person} className="flex items-center gap-3">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                              <span className="text-sm text-slate-700">{person}</span>
-                              <ArrowRight className="w-3.5 h-3.5 text-slate-300" />
-                              <span className="text-sm text-emerald-700 font-semibold">{member_name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {unmatchedPpl.length > 0 && (
-                      <div>
-                        <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-3">No encontrados</p>
-                        <div className="space-y-2">
-                          {unmatchedPpl.map((p) => (
-                            <div key={p} className="flex items-center gap-3">
-                              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                              <span className="text-sm text-slate-600">{p}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {roomMembers.length > 0 && (
-                      <div className="pt-4 border-t border-slate-100">
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Miembros de la sala</p>
-                        <div className="flex flex-wrap gap-2">
-                          {roomMembers.map((m) => (
-                            <span key={m.id} className="text-sm bg-slate-50 border border-slate-200 rounded-full px-3 py-1 text-slate-600 font-medium">{m.name}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-              </div>
-            )}
-
-            {/* ── Paso 2: Calendario ── */}
-            {step === 2 && (
-              <div className="space-y-3">
-                {session?.calendar_events && (
-                  <div className="flex items-center gap-3 px-5 py-3.5 bg-[#050040]/5 border border-[#050040]/15 rounded-2xl mb-2">
-                    <Sparkles className="w-4 h-4 text-[#050040]" />
-                    <span className="text-sm text-[#050040] font-semibold">Sugerencia IA: {session.calendar_events.title}</span>
-                    <span className="ml-auto text-sm font-bold text-[#050040]">{session.calendar_match_pct ?? 0}% match</span>
-                  </div>
-                )}
-                {nearbyEvents.length === 0 && (
-                  <div className="text-center py-16 text-slate-400">
-                    <Calendar className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-base">No hay eventos cercanos a esta fecha.</p>
-                    <p className="text-sm mt-1">Puedes continuar sin asignar evento.</p>
-                  </div>
-                )}
-                {nearbyEvents.map((ev) => {
-                  const sel   = selectedCalMatch?.id === ev.id;
-                  const diffMs = session?.meeting_date ? Math.abs(new Date(ev.start_at).getTime() - new Date(session.meeting_date).getTime()) : Infinity;
-                  const diffH  = Math.round(diffMs / 3600000);
-                  return (
-                    <button key={ev.id} onClick={() => pickCalMatch(ev)}
-                      className={cn("w-full text-left p-5 rounded-2xl border-2 transition-all flex items-center gap-4", sel ? "border-[#050040] bg-[#050040]/5 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm")}>
-                      <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-colors", sel ? "bg-[#050040] text-white" : "bg-slate-100 text-[#050040]")}>
-                        <Calendar className="w-6 h-6" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={cn("text-base font-bold truncate", sel ? "text-[#050040]" : "text-slate-800")}>{ev.title}</p>
-                        <p className="text-sm text-slate-400 mt-0.5">{fmtDate(ev.start_at)} · {fmtTime(ev.start_at)}</p>
-                      </div>
-                      {diffH < 999 && <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-full shrink-0">{diffH < 1 ? "< 1h" : `${diffH}h`} dif.</span>}
+        {/* ── Step 1: Workspace (for actions/full) ── */}
+        {step === 1 && mode !== "reminders" && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              {rooms.map((r) => {
+                const sel = selectedRoom?.id === r.id;
+                return (
+                  <motion.button key={r.id} onClick={() => selectRoom(r)}
+                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                    className={cn("p-5 rounded-2xl border-2 text-left transition-all", sel ? "border-[#050040] bg-[#050040]/5 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300")}>
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0" style={{ backgroundColor: r.color + "20" }}>{r.emoji}</div>
+                      <p className={cn("text-base font-bold truncate flex-1", sel ? "text-[#050040]" : "text-slate-800")}>{r.name}</p>
                       {sel && <div className="w-6 h-6 rounded-full bg-[#050040] flex items-center justify-center shrink-0"><Check className="w-3.5 h-3.5 text-white" /></div>}
-                    </button>
-                  );
-                })}
+                    </div>
+                  </motion.button>
+                );
+              })}
+              {rooms.length === 0 && (
+                <div className="col-span-2 text-center py-12 text-slate-400">
+                  <DoorOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                  <p className="text-base">No tienes workspaces. Puedes continuar sin asignar.</p>
+                </div>
+              )}
+            </div>
+            {selectedRoom && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <Sparkles className="w-5 h-5 text-[#050040]" />
+                  <p className="text-base font-bold text-slate-800">Análisis IA de personas</p>
+                  <span className="ml-auto text-2xl font-bold text-[#050040]">{matchPct}%</span>
+                </div>
+                <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-[#050040] rounded-full transition-all duration-700" style={{ width: `${matchPct}%` }} />
+                </div>
+                <p className="text-sm text-slate-500">de personas mencionadas coinciden con miembros del workspace</p>
+                {matchedPeople.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-2">Coincidencias</p>
+                    <div className="space-y-1.5">
+                      {matchedPeople.map(({ person, member_name }) => (
+                        <div key={person} className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                          <span className="text-sm text-slate-700">{person}</span>
+                          <ArrowRight className="w-3.5 h-3.5 text-slate-300" />
+                          <span className="text-sm text-emerald-700 font-semibold">{member_name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {unmatchedPpl.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">No encontrados</p>
+                    {unmatchedPpl.map((p) => (
+                      <div key={p} className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span className="text-sm text-slate-600">{p}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </div>
+        )}
+
+        {/* ── Step 2: Calendar match ── */}
+        {step === 2 && (
+          <div className="space-y-3">
+            {session?.calendar_events && (
+              <div className="flex items-center gap-3 px-5 py-3.5 bg-[#050040]/5 border border-[#050040]/15 rounded-2xl">
+                <Sparkles className="w-4 h-4 text-[#050040]" />
+                <span className="text-sm text-[#050040] font-semibold">Sugerencia IA: {session.calendar_events.title}</span>
+                <span className="ml-auto text-sm font-bold text-[#050040]">{session.calendar_match_pct ?? 0}% match</span>
               </div>
             )}
+            {nearbyEvents.length === 0 && (
+              <div className="text-center py-16 text-slate-400">
+                <Calendar className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p>No hay eventos cercanos a esta fecha.</p>
+                <p className="text-sm mt-1">Puedes continuar sin asignar evento.</p>
+              </div>
+            )}
+            {nearbyEvents.map((ev) => {
+              const sel = selectedCalMatch?.id === ev.id;
+              const diffH = session?.meeting_date ? Math.round(Math.abs(new Date(ev.start_at).getTime() - new Date(session.meeting_date).getTime()) / 3600000) : 999;
+              return (
+                <motion.button key={ev.id} onClick={() => pickCalMatch(ev)} whileHover={{ scale: 1.01 }}
+                  className={cn("w-full text-left p-5 rounded-2xl border-2 transition-all flex items-center gap-4", sel ? "border-[#050040] bg-[#050040]/5 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300")}>
+                  <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shrink-0", sel ? "bg-[#050040] text-white" : "bg-slate-100 text-[#050040]")}>
+                    <Calendar className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={cn("text-base font-bold truncate", sel ? "text-[#050040]" : "text-slate-800")}>{ev.title}</p>
+                    <p className="text-sm text-slate-400 mt-0.5">{fmtDate(ev.start_at)} · {fmtTime(ev.start_at)}</p>
+                  </div>
+                  {diffH < 999 && <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-full shrink-0">{diffH < 1 ? "< 1h" : `${diffH}h`} dif.</span>}
+                  {sel && <div className="w-6 h-6 rounded-full bg-[#050040] flex items-center justify-center shrink-0"><Check className="w-3.5 h-3.5 text-white" /></div>}
+                </motion.button>
+              );
+            })}
+          </div>
+        )}
 
-            {/* ── Paso 3: Acciones ── */}
-            {step === 3 && (
-              <div>
-                {/* Toolbar */}
-                <div className="flex items-center gap-3 mb-5 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full">{approved.length} aprobadas</span>
-                    <span className="text-sm font-bold text-red-500 bg-red-50 border border-red-100 px-3 py-1.5 rounded-full">{rejected.length} rechazadas</span>
-                    <span className="text-sm font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-full">{pending.length} pendientes</span>
-                  </div>
-                  <button onClick={approveAll}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-semibold hover:bg-emerald-100 transition-colors">
-                    <CheckCircle2 className="w-4 h-4" />Aprobar todas
-                  </button>
-                  <div className="relative flex-1 min-w-[160px]">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                    <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar acciones…"
-                      className="w-full pl-10 pr-4 py-2 rounded-xl bg-white border border-slate-200 text-sm placeholder:text-slate-400 outline-none focus:border-[#050040]/40" />
-                  </div>
-                </div>
-                {/* Filtros */}
-                <div className="flex items-center gap-2 mb-5 flex-wrap">
-                  {([
-                    { v: "all"      as const, l: "Todas"      },
-                    { v: "task"     as const, l: "Tareas"     },
-                    { v: "decision" as const, l: "Decisiones" },
-                    { v: "risk"     as const, l: "Riesgos"    },
-                    { v: "next_step"as const, l: "Próx. pasos"},
-                  ]).map(({ v, l }) => (
-                    <button key={v} onClick={() => setFilterType(v)}
-                      className={cn("px-4 py-2 rounded-xl text-sm font-semibold transition-all",
-                        filterType === v ? "bg-[#050040] text-white shadow-sm" : "bg-white border border-slate-200 text-slate-500 hover:border-slate-300")}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-                {itemsLoading && <div className="flex items-center justify-center py-12"><RefreshCw className="w-6 h-6 text-slate-300 animate-spin" /></div>}
-                {!itemsLoading && (
-                  <div className="space-y-3">
-                    <AnimatePresence>
-                      {filtered.map((item) => <ActionCard key={item.id} item={item} onToggle={toggleItem} onEdit={editItem} />)}
-                    </AnimatePresence>
-                    {filtered.length === 0 && (
-                      <div className="text-center py-12 text-slate-400">
-                        <ClipboardList className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                        <p className="text-base">Sin acciones para este filtro</p>
-                      </div>
-                    )}
+        {/* ── Reminders swipe step (step 3 for actions/full, step 1 for reminders mode) ── */}
+        {step === remindersSwipeStep && (
+          <div className="space-y-3">
+            {/* Hint */}
+            <div className="flex items-center justify-between px-1 mb-2">
+              <div className="flex items-center gap-4 text-xs text-slate-400">
+                <span className="flex items-center gap-1.5"><X className="w-3.5 h-3.5 text-red-400" />izquierda = omitir</span>
+                <span className="flex items-center gap-1.5"><Bell className="w-3.5 h-3.5 text-emerald-500" />derecha = recordatorio</span>
+              </div>
+              <span className="text-xs font-bold text-emerald-600">
+                {Object.values(reminderDecisions).filter((d) => d === "accepted").length} aceptados
+              </span>
+            </div>
+            {itemsLoading && (
+              <div className="flex items-center justify-center py-16">
+                <RefreshCw className="w-6 h-6 text-slate-300 animate-spin" />
+              </div>
+            )}
+            {!itemsLoading && items.length === 0 && (
+              <div className="text-center py-16 text-slate-400">
+                <Bell className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p>No se detectaron items en esta reunión</p>
+              </div>
+            )}
+            <AnimatePresence>
+              {!itemsLoading && items.map((item) => (
+                <motion.div key={item.id} layout
+                  initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}>
+                  <SwipeReminderCard
+                    item={item}
+                    decision={reminderDecisions[item.id] ?? null}
+                    onDecide={(id, d) => setReminderDecisions((prev) => ({ ...prev, [id]: d }))}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+
+        {/* ── Step 4 (actions/full): Integration actions review ── */}
+        {step === actionsStep && (
+          <div>
+            <div className="flex items-center gap-3 mb-5 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full">{approved.length} aprobadas</span>
+                <span className="text-sm font-bold text-red-500 bg-red-50 border border-red-100 px-3 py-1.5 rounded-full">{rejected.length} rechazadas</span>
+                <span className="text-sm font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-full">{pending.length} pendientes</span>
+              </div>
+              <button onClick={approveAll}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-semibold hover:bg-emerald-100 transition-colors">
+                <CheckCircle2 className="w-4 h-4" />Aprobar todas
+              </button>
+              <div className="relative flex-1 min-w-[160px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar acción…"
+                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-sm text-slate-700 outline-none focus:border-[#050040]/50" />
+              </div>
+            </div>
+            <div className="flex gap-2 mb-4 flex-wrap">
+              {([ ["all","Todas"], ["task","Tareas"], ["decision","Decisiones"], ["next_step","Próx. pasos"], ["risk","Riesgos"], ["note","Notas"] ] as [string, string][]).map(([v, l]) => (
+                <button key={v} onClick={() => setFilterType(v as ActionType | "all")}
+                  className={cn("px-4 py-2 rounded-xl text-sm font-semibold transition-all", filterType === v ? "bg-[#050040] text-white shadow-sm" : "bg-white border border-slate-200 text-slate-500 hover:border-slate-300")}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            {itemsLoading && <div className="flex items-center justify-center py-12"><RefreshCw className="w-6 h-6 text-slate-300 animate-spin" /></div>}
+            {!itemsLoading && (
+              <div className="space-y-3">
+                <AnimatePresence>
+                  {filtered.map((item) => <ActionCard key={item.id} item={item} onToggle={toggleItem} onEdit={editItem} />)}
+                </AnimatePresence>
+                {filtered.length === 0 && (
+                  <div className="text-center py-12 text-slate-400">
+                    <ClipboardList className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p>Sin acciones para este filtro</p>
                   </div>
                 )}
               </div>
             )}
           </div>
-        </div>
+        )}
 
-        {/* ── Footer navegación ─────────────────────────────────────────── */}
-        <div className="bg-white border-t border-slate-100 px-8 py-5 flex items-center justify-between gap-4 shrink-0">
-          {step > 0 ? (
-            <button onClick={goBack}
-              className="flex items-center gap-2 px-5 py-3 rounded-xl border border-slate-200 text-base font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-              <ArrowLeft className="w-5 h-5" />Atrás
+        {/* ── Footer navigation ── */}
+        <div className="flex items-center justify-between mt-10 pt-6 border-t border-slate-200">
+          <button onClick={goBack}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+            <ArrowLeft className="w-4 h-4" />Atrás
+          </button>
+
+          {step === actionsStep ? (
+            <button onClick={handleExecute} disabled={approved.length === 0}
+              className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all",
+                approved.length > 0 ? "bg-[#050040] text-white hover:bg-[#050040]/90 shadow-md" : "bg-slate-100 text-slate-400 cursor-not-allowed")}>
+              <Play className="w-4 h-4" />Aprobar y ejecutar
+              {approved.length > 0 && <span className="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full ml-1">{approved.length}</span>}
             </button>
-          ) : <div />}
-
-          {step < 3 ? (
-            <button onClick={goNext} disabled={!canProceed()}
-              className={cn(
-                "flex items-center gap-2 px-7 py-3 rounded-xl text-base font-semibold transition-all",
-                canProceed()
-                  ? "bg-[#050040] text-white hover:bg-[#050040]/90 shadow-md shadow-[#050040]/20"
-                  : "bg-slate-100 text-slate-400 cursor-not-allowed",
-              )}>
-              {step === 0 && (mode === "summary" || mode === "reminders")
-                ? <><Sparkles className="w-5 h-5" />Generar</>
-                : step === 0
-                  ? <>Siguiente <ArrowRight className="w-5 h-5" /></>
-                  : <>Continuar <ArrowRight className="w-5 h-5" /></>}
+          ) : step === remindersSwipeStep && mode === "reminders" ? (
+            <button onClick={goNext}
+              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 transition-colors">
+              <Bell className="w-4 h-4" />Guardar recordatorios
+              {Object.values(reminderDecisions).filter((d) => d === "accepted").length > 0 && (
+                <span className="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full ml-1">
+                  {Object.values(reminderDecisions).filter((d) => d === "accepted").length}
+                </span>
+              )}
             </button>
           ) : (
-            <button onClick={handleExecute} disabled={approved.length === 0}
-              className={cn(
-                "flex items-center gap-2 px-7 py-3 rounded-xl text-base font-semibold transition-all",
-                approved.length > 0
-                  ? "bg-[#050040] text-white hover:bg-[#050040]/90 shadow-md shadow-[#050040]/20"
-                  : "bg-slate-100 text-slate-400 cursor-not-allowed",
-              )}>
-              <Play className="w-5 h-5" />
-              Aprobar y ejecutar
-              {approved.length > 0 && (
-                <span className="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full ml-1">{approved.length}</span>
-              )}
+            <button onClick={goNext} disabled={!canProceed()}
+              className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all",
+                canProceed() ? "bg-[#050040] text-white hover:bg-[#050040]/90" : "bg-slate-100 text-slate-400 cursor-not-allowed")}>
+              Continuar <ArrowRight className="w-4 h-4" />
             </button>
           )}
         </div>
+
       </div>
     </div>
   );
