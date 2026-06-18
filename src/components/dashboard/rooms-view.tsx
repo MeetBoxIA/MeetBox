@@ -128,70 +128,150 @@ function RoomFormModal({ initial, onSave, onClose }: {
   );
 }
 
-// ── NewMeetingModal ────────────────────────────────────────────────────────────
-function NewMeetingModal({ roomId, onSave, onClose }: {
-  roomId: string; onSave: (ev: RoomMeeting) => void; onClose: () => void;
+// ── MeetingFormModal ──────────────────────────────────────────────────────────
+function MeetingFormModal({ roomId, roomColor, initial, onSave, onClose }: {
+  roomId: string; roomColor: string;
+  initial?: RoomMeeting;
+  onSave: (ev: RoomMeeting) => void; onClose: () => void;
 }) {
-  const now = new Date(); const pad = (n: number) => String(n).padStart(2,"0");
-  const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-  const [title,       setTitle]       = React.useState("");
-  const [startTime,   setStartTime]   = React.useState(`${pad(now.getHours()+1)}:00`);
-  const [endTime,     setEndTime]     = React.useState(`${pad(now.getHours()+2)}:00`);
-  const [location,    setLocation]    = React.useState("");
-  const [description, setDescription] = React.useState("");
-  const [saving,      setSaving]      = React.useState(false);
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  function parseDate(iso: string) {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+  function parseTime(iso: string) {
+    const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  const todayStr  = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const roundMin  = Math.ceil(now.getMinutes() / 30) * 30;
+  const sh = roundMin === 60 ? now.getHours() + 1 : now.getHours();
+  const sm = roundMin === 60 ? 0 : roundMin;
+  const defStart  = `${pad(sh % 24)}:${pad(sm)}`;
+  const defEnd    = `${pad((sh + 1) % 24)}:${pad(sm)}`;
+
+  const [title,   setTitle]   = React.useState(initial?.title ?? "");
+  const [date,    setDate]    = React.useState(initial ? parseDate(initial.start_at) : todayStr);
+  const [startT,  setStartT]  = React.useState(initial ? parseTime(initial.start_at) : defStart);
+  const [endT,    setEndT]    = React.useState(initial?.end_at ? parseTime(initial.end_at) : defEnd);
+  const [loc,     setLoc]     = React.useState(initial?.location ?? "");
+  const [desc,    setDesc]    = React.useState(initial?.description ?? "");
+  const [saving,  setSaving]  = React.useState(false);
 
   async function submit() {
-    if (!title.trim()) return; setSaving(true);
-    const tz = localOffsetStr();
-    const res = await fetch("/api/meetcalendar/events", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: title.trim(), type: "meeting", start_at: `${today}T${startTime}:00${tz}`, end_at: endTime ? `${today}T${endTime}:00${tz}` : null, all_day: false, color: "#050040", location: location || null, description: description || null, notify_email: false, notify_minutes: 15, room_id: roomId }),
-    });
-    if (res.ok) { const d = await res.json(); onSave(d.event); }
+    if (!title.trim()) return;
+    setSaving(true);
+    const tz       = localOffsetStr();
+    const start_at = `${date}T${startT}:00${tz}`;
+    const end_at   = endT ? `${date}T${endT}:00${tz}` : null;
+
+    if (initial) {
+      const res = await fetch(`/api/meetcalendar/events/${initial.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(), start_at, end_at,
+          location: loc.trim() || null, description: desc.trim() || null,
+        }),
+      });
+      if (res.ok) { const d = await res.json(); onSave(d.event); }
+    } else {
+      const res = await fetch("/api/meetcalendar/events", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(), type: "meeting",
+          start_at, end_at, all_day: false, color: roomColor,
+          location: loc.trim() || null, description: desc.trim() || null,
+          notify_email: true, notify_minutes: 15, room_id: roomId,
+        }),
+      });
+      if (res.ok) { const d = await res.json(); onSave(d.event); }
+    }
     setSaving(false);
   }
+
+  const isEdit = !!initial;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <style>{ANIM}</style>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
         style={{ animation: "rmFade 0.2s cubic-bezier(0.16,1,0.3,1) both" }}>
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-          <div className="flex items-center gap-2"><Video className="w-4 h-4 text-[#050040]" /><h2 className="text-base font-semibold text-slate-800">Nueva reunión</h2></div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors"><X className="w-4 h-4 text-slate-500" /></button>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: roomColor + "20" }}>
+              <Video className="w-4 h-4" style={{ color: roomColor }} />
+            </div>
+            <h2 className="text-base font-semibold text-slate-800">
+              {isEdit ? "Editar reunión" : "Nueva reunión"}
+            </h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+            <X className="w-4 h-4 text-slate-500" />
+          </button>
         </div>
+
+        {/* Form */}
         <div className="px-6 py-5 space-y-4">
+          {/* Title */}
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Título</label>
-            <input autoFocus type="text" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} placeholder="Nombre de la reunión"
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Título *</label>
+            <input autoFocus type="text" value={title} onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+              placeholder="Nombre de la reunión"
+              className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-[#050040]/50 focus:ring-2 focus:ring-[#050040]/8 transition" />
+          </div>
+
+          {/* Date + times */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-3">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Fecha</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 outline-none focus:border-[#050040]/50 transition" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Inicio</label>
+              <input type="time" value={startT} onChange={(e) => setStartT(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 outline-none focus:border-[#050040]/50 transition" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Fin</label>
+              <input type="time" value={endT} onChange={(e) => setEndT(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 outline-none focus:border-[#050040]/50 transition" />
+            </div>
+            <div />
+          </div>
+
+          {/* Location */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Ubicación <span className="font-normal text-slate-400">(opcional)</span></label>
+            <input type="text" value={loc} onChange={(e) => setLoc(e.target.value)}
+              placeholder="Sala, enlace o dirección"
               className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-[#050040]/50 transition" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            {[["Inicio", startTime, setStartTime] as const, ["Fin", endTime, setEndTime] as const].map(([lbl,val,set]) => (
-              <div key={lbl}>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">{lbl}</label>
-                <input type="time" value={val} onChange={(e) => set(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 outline-none focus:border-[#050040]/50 transition" />
-              </div>
-            ))}
-          </div>
+
+          {/* Description */}
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5"><MapPin className="w-3.5 h-3.5 inline mr-1 text-slate-400" />Ubicación (opcional)</label>
-            <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="URL o lugar"
-              className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-[#050040]/50 transition" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5"><AlignLeft className="w-3.5 h-3.5 inline mr-1 text-slate-400" />Descripción (opcional)</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Agenda, notas…" rows={2}
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Descripción <span className="font-normal text-slate-400">(opcional)</span></label>
+            <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3}
+              placeholder="Agenda, participantes, notas previas…"
               className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-[#050040]/50 transition resize-none" />
           </div>
         </div>
+
+        {/* Footer */}
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100">
-          <button onClick={onClose} className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition">Cancelar</button>
-          <button onClick={submit} disabled={saving || !title.trim()} className="px-4 py-2 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 disabled:opacity-50 transition">
-            {saving ? "Creando…" : "Crear reunión"}
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
+            Cancelar
+          </button>
+          <button onClick={submit} disabled={saving || !title.trim()}
+            className="flex items-center gap-1.5 px-5 py-2 rounded-xl text-white text-sm font-semibold hover:brightness-110 disabled:opacity-50 transition"
+            style={{ backgroundColor: roomColor }}>
+            {saving ? "Guardando…" : isEdit ? <><Check className="w-4 h-4" />Guardar cambios</> : <><Plus className="w-4 h-4" />Crear reunión</>}
           </button>
         </div>
       </div>
@@ -334,14 +414,17 @@ function AddMemberForm({ roomId, onAdd, onCancel }: {
 function RoomDetail({ room, onBack, onEdit, onDelete }: {
   room: Room; onBack: () => void; onEdit: (r: Room) => void; onDelete: (id: string) => void;
 }) {
-  const [confirmDel,   setConfirmDel]   = React.useState(false);
-  const [members,      setMembers]      = React.useState<RoomMember[]>([]);
-  const [membersLoad,  setMembersLoad]  = React.useState(true);
-  const [showAddForm,  setShowAddForm]  = React.useState(false);
-  const [meetings,     setMeetings]     = React.useState<RoomMeeting[]>([]);
-  const [meetLoad,     setMeetLoad]     = React.useState(true);
-  const [showNewMeet,  setShowNewMeet]  = React.useState(false);
-  const [expandedMeet, setExpandedMeet] = React.useState<string | null>(null);
+  const { addNotification } = useNotifications();
+  const [confirmDel,     setConfirmDel]     = React.useState(false);
+  const [members,        setMembers]        = React.useState<RoomMember[]>([]);
+  const [membersLoad,    setMembersLoad]    = React.useState(true);
+  const [showAddForm,    setShowAddForm]    = React.useState(false);
+  const [meetings,       setMeetings]       = React.useState<RoomMeeting[]>([]);
+  const [meetLoad,       setMeetLoad]       = React.useState(true);
+  const [showNewMeet,    setShowNewMeet]    = React.useState(false);
+  const [editingMeeting, setEditingMeeting] = React.useState<RoomMeeting | null>(null);
+  const [deletingMeetId, setDeletingMeetId] = React.useState<string | null>(null);
+  const [expandedMeet,   setExpandedMeet]   = React.useState<string | null>(null);
 
   // Load members
   React.useEffect(() => {
@@ -352,22 +435,40 @@ function RoomDetail({ room, onBack, onEdit, onDelete }: {
       .finally(() => setMembersLoad(false));
   }, [room.id]);
 
-  // Load today's meetings
+  // Load meetings — past 7 days through next 60 days
   React.useEffect(() => { loadMeetings(); }, [room.id]);
   async function loadMeetings() {
     setMeetLoad(true);
-    const { start, end } = todayRange();
-    const res = await fetch(`/api/meetcalendar/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&room_id=${room.id}`);
+    const now   = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7).toISOString();
+    const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 60, 23, 59, 59).toISOString();
+    const res = await fetch(
+      `/api/meetcalendar/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&room_id=${room.id}`,
+    );
     if (res.ok) {
       const d = await res.json();
-      setMeetings((d.events ?? []).filter((e: { type: string }) => e.type === "meeting")
-        .sort((a: RoomMeeting, b: RoomMeeting) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime()));
+      setMeetings(
+        ((d.events ?? []) as RoomMeeting[])
+          .filter((e) => (e as unknown as { type: string }).type === "meeting")
+          .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime()),
+      );
     }
     setMeetLoad(false);
   }
 
-  const today = new Date();
-  const dateStr = today.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+  async function deleteMeeting(id: string) {
+    const meeting = meetings.find((m) => m.id === id);
+    const res = await fetch(`/api/meetcalendar/events/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      setMeetings((p) => p.filter((m) => m.id !== id));
+      setDeletingMeetId(null);
+      addNotification({
+        title: "Reunión eliminada",
+        description: meeting?.title ?? "Reunión eliminada del workspace",
+        type: "event",
+      });
+    }
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ animation: "rmFade 0.2s ease both" }}>
@@ -399,7 +500,7 @@ function RoomDetail({ room, onBack, onEdit, onDelete }: {
             </div>
             <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 border border-slate-200">
               <Video className="w-4 h-4 text-slate-400" />
-              <span className="text-sm font-semibold text-slate-700">{meetings.length} reuniones hoy</span>
+              <span className="text-sm font-semibold text-slate-700">{meetings.length} reunión{meetings.length !== 1 ? "es" : ""}</span>
             </div>
           </div>
 
@@ -483,22 +584,23 @@ function RoomDetail({ room, onBack, onEdit, onDelete }: {
           {/* Section header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white shrink-0">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center">
-                <Video className="w-4 h-4 text-slate-500" />
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: room.color + "18" }}>
+                <Video className="w-4 h-4" style={{ color: room.color }} />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-800">Reuniones de la sala</h3>
-                <p className="text-xs text-slate-400 capitalize">{dateStr}</p>
+                <h3 className="text-sm font-bold text-slate-800">Reuniones</h3>
+                <p className="text-xs text-slate-400">{meetings.length} programada{meetings.length !== 1 ? "s" : ""}</p>
               </div>
             </div>
             <button onClick={() => setShowNewMeet(true)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 transition-colors">
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:brightness-110 transition-all"
+              style={{ backgroundColor: room.color }}>
               <Plus className="w-4 h-4" />Nueva reunión
             </button>
           </div>
 
-          {/* Meetings list */}
-          <div className="flex-1 overflow-y-auto px-5 py-4 bg-slate-50 space-y-3">
+          {/* Meetings list — grouped by date */}
+          <div className="flex-1 overflow-y-auto px-5 py-4 bg-slate-50">
             {meetLoad && (
               <div className="flex items-center justify-center py-12">
                 <div className="w-6 h-6 border-2 border-slate-200 border-t-[#050040] rounded-full animate-spin" />
@@ -509,93 +611,207 @@ function RoomDetail({ room, onBack, onEdit, onDelete }: {
               <div className="flex flex-col items-center justify-center py-14 text-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/undraw_booking_8vl5.svg" alt="" className="w-44 h-auto mb-5 opacity-80" draggable={false} />
-                <p className="text-base font-semibold text-slate-600">Sin reuniones hoy</p>
-                <p className="text-sm text-slate-400 mt-1">Crea una reunión para esta sala</p>
+                <p className="text-base font-semibold text-slate-600">Sin reuniones</p>
+                <p className="text-sm text-slate-400 mt-1">Crea una reunión para este workspace</p>
                 <button onClick={() => setShowNewMeet(true)}
-                  className="mt-4 flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 transition-colors">
+                  className="mt-4 flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:brightness-110 transition-all"
+                  style={{ backgroundColor: room.color }}>
                   <Plus className="w-4 h-4" />Crear reunión
                 </button>
               </div>
             )}
 
-            {!meetLoad && meetings.map((m) => {
-              const open = expandedMeet === m.id;
-              const now  = new Date();
-              const start = new Date(m.start_at);
-              const end   = m.end_at ? new Date(m.end_at) : null;
-              const isNow = start <= now && (!end || end >= now);
-              const isPast = end ? end < now : start < now;
+            {!meetLoad && (() => {
+              // Group by YYYY-MM-DD
+              const groups = new Map<string, RoomMeeting[]>();
+              for (const m of meetings) {
+                const key = m.start_at.slice(0, 10);
+                (groups.get(key) ?? groups.set(key, []).get(key)!).push(m);
+              }
+              const todayKey = new Date().toISOString().slice(0, 10);
 
-              return (
-                <div key={m.id} className={cn(
-                  "rounded-2xl border overflow-hidden transition-all hover:shadow-sm",
-                  isNow  ? "border-[#050040]/25 bg-white shadow-sm" : "border-slate-200 bg-white",
-                )}>
-                  {/* Color top stripe */}
-                  {isNow && <div className="h-1 w-full" style={{ backgroundColor: m.color || room.color }} />}
+              return Array.from(groups.entries()).map(([dayKey, dayMeetings]) => {
+                const diff = Math.round(
+                  (new Date(dayKey).getTime() - new Date(todayKey).getTime()) / 86400000,
+                );
+                const dayLabel =
+                  diff === 0  ? "Hoy" :
+                  diff === 1  ? "Mañana" :
+                  diff === -1 ? "Ayer" :
+                  new Date(dayKey + "T12:00:00").toLocaleDateString("es-ES", {
+                    weekday: "long", day: "numeric", month: "long",
+                  });
+                const isPastDay = diff < 0;
 
-                  <button onClick={() => setExpandedMeet(open ? null : m.id)} className="w-full text-left p-5">
-                    <div className="flex items-start gap-4">
-                      {/* Time block */}
-                      <div className={cn(
-                        "w-16 shrink-0 rounded-xl p-2.5 text-center",
-                        isNow ? "text-white" : isPast ? "bg-slate-100" : "bg-slate-50 border border-slate-200",
-                      )} style={isNow ? { backgroundColor: m.color || room.color } : {}}>
-                        <p className={cn("text-sm font-bold leading-none", isNow ? "text-white" : "text-slate-700")}>
-                          {fmtTime(m.start_at)}
-                        </p>
-                        {m.end_at && (
-                          <p className={cn("text-[10px] mt-1", isNow ? "text-white/70" : "text-slate-400")}>
-                            {fmtTime(m.end_at)}
-                          </p>
-                        )}
-                      </div>
+                return (
+                  <div key={dayKey} className="mb-5">
+                    {/* Date group header */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={cn(
+                        "text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full",
+                        diff === 0
+                          ? "text-white"
+                          : isPastDay
+                          ? "text-slate-400 bg-slate-200"
+                          : "text-slate-500 bg-slate-200",
+                      )} style={diff === 0 ? { backgroundColor: room.color } : {}}>
+                        {dayLabel}
+                      </span>
+                      <div className="flex-1 h-px bg-slate-200" />
+                    </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className={cn("text-base font-bold leading-tight", isPast ? "text-slate-500" : "text-slate-800")}>
-                            {m.title}
-                          </p>
-                          {isNow && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 animate-pulse"
-                              style={{ backgroundColor: (m.color || room.color) + "20", color: m.color || room.color }}>
-                              EN CURSO
-                            </span>
-                          )}
-                          {isPast && !isNow && (
-                            <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full shrink-0">Pasada</span>
-                          )}
-                        </div>
-                        {m.location && (
-                          <div className="flex items-center gap-1.5 mt-2">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <p className="text-sm text-slate-500 truncate">{m.location}</p>
+                    {/* Meetings for this day */}
+                    <div className="space-y-2.5">
+                      {dayMeetings.map((m) => {
+                        const open  = expandedMeet === m.id;
+                        const deleting = deletingMeetId === m.id;
+                        const nowTs = Date.now();
+                        const start = new Date(m.start_at);
+                        const end   = m.end_at ? new Date(m.end_at) : null;
+                        const isNow  = start.getTime() <= nowTs && (!end || end.getTime() >= nowTs);
+                        const isPast = end ? end.getTime() < nowTs : start.getTime() < nowTs;
+                        const color  = m.color || room.color;
+
+                        return (
+                          <div key={`${m.id}-${m.start_at}`} className={cn(
+                            "rounded-2xl border overflow-hidden transition-all",
+                            isNow  ? "border-[#050040]/20 bg-white shadow-sm" : "border-slate-200 bg-white hover:shadow-sm",
+                          )}>
+                            {isNow && <div className="h-1 w-full" style={{ backgroundColor: color }} />}
+
+                            <div className="p-4">
+                              <div className="flex items-start gap-3">
+                                {/* Time chip */}
+                                <div className={cn(
+                                  "w-14 shrink-0 rounded-xl p-2 text-center",
+                                  isNow ? "text-white" : isPast ? "bg-slate-100" : "bg-slate-50 border border-slate-200",
+                                )} style={isNow ? { backgroundColor: color } : {}}>
+                                  <p className={cn("text-xs font-bold leading-none", isNow ? "text-white" : "text-slate-700")}>
+                                    {fmtTime(m.start_at)}
+                                  </p>
+                                  {m.end_at && (
+                                    <p className={cn("text-[10px] mt-1 leading-none", isNow ? "text-white/70" : "text-slate-400")}>
+                                      {fmtTime(m.end_at)}
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Title + status */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className={cn("text-sm font-bold leading-snug", isPast ? "text-slate-500" : "text-slate-800")}>
+                                      {m.title}
+                                    </p>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      {isNow && (
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse"
+                                          style={{ backgroundColor: color + "20", color }}>
+                                          EN CURSO
+                                        </span>
+                                      )}
+                                      {/* Edit button */}
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setEditingMeeting(m); }}
+                                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </button>
+                                      {/* Delete button / confirm */}
+                                      {deleting ? (
+                                        <div className="flex items-center gap-1">
+                                          <button onClick={() => deleteMeeting(m.id)}
+                                            className="p-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors">
+                                            <Check className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button onClick={() => setDeletingMeetId(null)}
+                                            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors">
+                                            <X className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); setDeletingMeetId(m.id); }}
+                                          className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                      {/* Expand */}
+                                      <button onClick={() => setExpandedMeet(open ? null : m.id)}
+                                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors">
+                                        <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", open && "rotate-180")} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  {m.location && (
+                                    <div className="flex items-center gap-1 mt-1.5">
+                                      <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                      <p className="text-xs text-slate-400 truncate">{m.location}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Expanded: description */}
+                              {open && (m.description || deleting) && (
+                                <div className="mt-3 pt-3 border-t border-slate-100">
+                                  {m.description && (
+                                    <p className="text-sm text-slate-600 leading-relaxed">{m.description}</p>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Inline delete confirm */}
+                              {deleting && (
+                                <div className="mt-3 pt-3 border-t border-red-100 flex items-center justify-between">
+                                  <p className="text-xs text-red-500 font-medium">¿Eliminar esta reunión?</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <button onClick={() => setDeletingMeetId(null)}
+                                      className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 transition">
+                                      Cancelar
+                                    </button>
+                                    <button onClick={() => deleteMeeting(m.id)}
+                                      className="px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-red-500 hover:bg-red-600 transition">
+                                      Eliminar
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        )}
-                      </div>
-                      <ChevronDown className={cn("w-4 h-4 text-slate-400 shrink-0 mt-0.5 transition-transform", open && "rotate-180")} />
+                        );
+                      })}
                     </div>
-                  </button>
-
-                  {open && m.description && (
-                    <div className="px-5 pb-5 pt-0">
-                      <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                        <p className="text-sm text-slate-600 leading-relaxed">{m.description}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
       </div>
 
       {/* ── Modals ───────────────────────────────────────────────────────── */}
       {showNewMeet && (
-        <NewMeetingModal roomId={room.id}
-          onSave={(ev) => { setMeetings((p) => [...p, ev].sort((a,b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime())); setShowNewMeet(false); }}
+        <MeetingFormModal
+          roomId={room.id} roomColor={room.color}
+          onSave={(ev) => {
+            setMeetings((p) => [...p, ev].sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime()));
+            setShowNewMeet(false);
+            addNotification({ title: "Reunión creada", description: ev.title, type: "event" });
+          }}
           onClose={() => setShowNewMeet(false)} />
+      )}
+      {editingMeeting && (
+        <MeetingFormModal
+          roomId={room.id} roomColor={room.color}
+          initial={editingMeeting}
+          onSave={(updated) => {
+            setMeetings((p) =>
+              p.map((m) => m.id === updated.id ? updated : m)
+               .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime()),
+            );
+            setEditingMeeting(null);
+            addNotification({ title: "Reunión actualizada", description: updated.title, type: "event" });
+          }}
+          onClose={() => setEditingMeeting(null)} />
       )}
 
       {confirmDel && (
@@ -721,8 +937,8 @@ export default function RoomsView() {
       <style>{ANIM}</style>
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-[#050040]">Salas</h2>
-          <p className="text-sm text-slate-400 mt-0.5">{rooms.length} sala{rooms.length !== 1 ? "s" : ""} · reuniones de hoy visibles en cada sala</p>
+          <h2 className="text-2xl font-bold text-[#050040]">Workspaces</h2>
+          <p className="text-sm text-slate-400 mt-0.5">{rooms.length} workspace{rooms.length !== 1 ? "s" : ""} · reuniones de hoy visibles en cada uno</p>
         </div>
         <button onClick={() => setShowCreate(true)}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 transition-colors shadow-sm">
@@ -738,8 +954,8 @@ export default function RoomsView() {
         <div className="flex flex-col items-center justify-center py-16 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/undraw_collaboration_hkrb.svg" alt="" className="w-60 h-auto mb-6 opacity-90" draggable={false} />
-          <h3 className="text-lg font-bold text-slate-700">Aún no hay salas</h3>
-          <p className="text-sm text-slate-400 mt-1 mb-5">Crea tu primera sala para organizar reuniones y personas</p>
+          <h3 className="text-lg font-bold text-slate-700">Aún no hay workspaces</h3>
+          <p className="text-sm text-slate-400 mt-1 mb-5">Crea tu primer workspace para organizar reuniones y personas</p>
           <button onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 px-5 py-3 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 transition-colors">
             <Plus className="w-4 h-4" />Crear primera sala

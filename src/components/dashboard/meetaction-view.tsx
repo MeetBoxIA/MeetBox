@@ -13,7 +13,7 @@ import {
   Users, Zap, Calendar, BookOpen, BarChart3,
   ExternalLink, Search, Eye,
   Cpu, ChevronDown, DoorOpen, Mic, CalendarCheck,
-  ClipboardList, History,
+  ClipboardList, History, FileText, Bell, Layers,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SiJira, SiSlack, SiNotion } from "react-icons/si";
@@ -26,6 +26,9 @@ type Destination   = "jira" | "slack" | "notion" | "teams" | "meetcalendar" | "m
 type Priority      = "low" | "medium" | "high" | "critical";
 type SessionStatus = "processing" | "pending_review" | "approved" | "executed" | "partial" | "rejected";
 type WizardStep    = 0 | 1 | 2 | 3;
+type Mode          = "summary" | "actions" | "reminders" | "full";
+
+interface SessionReminder { id: string; title: string; source: "ai" | "manual"; deadline: string | null; completed: boolean; session_id: string | null; }
 
 interface Room        { id: string; name: string; color: string; emoji: string; }
 interface RoomMember  { id: string; name: string; email: string; }
@@ -88,6 +91,71 @@ const STEPS = [
   { icon: ClipboardList, label: "Acciones",   hint: "Revisa y aprueba las acciones" },
 ];
 
+function stepsForMode(m: Mode | null) {
+  if (!m || m === "actions" || m === "full") return STEPS;
+  if (m === "summary") return [
+    { icon: Mic,      label: "Reunión",  hint: "Elige qué reunión procesar" },
+    { icon: FileText, label: "Resumen",  hint: "Resumen generado por IA"    },
+  ];
+  return [
+    { icon: Mic,  label: "Reunión",        hint: "Elige qué reunión procesar" },
+    { icon: Bell, label: "Recordatorios",  hint: "Tareas detectadas por IA"   },
+  ];
+}
+
+// ── Mode selector ──────────────────────────────────────────────────────────────
+const MODE_OPTIONS: { id: Mode; icon: React.ElementType; color: string; bg: string; title: string; desc: string; badge?: string }[] = [
+  { id: "summary",   icon: FileText, color: "#0891b2", bg: "#f0f9ff", title: "Solo resumen",               desc: "La IA resume los puntos clave, decisiones y próximos pasos.",              badge: "Rápido"    },
+  { id: "actions",   icon: Zap,      color: "#050040", bg: "#eef0ff", title: "Acciones con integraciones", desc: "Genera tareas y las distribuye a Jira, Slack, Notion y más.",              badge: "Completo"  },
+  { id: "reminders", icon: Bell,     color: "#d97706", bg: "#fef9ee", title: "Generar recordatorios",      desc: "Detecta tareas fantasma de la reunión y las añade a tus recordatorios."                        },
+  { id: "full",      icon: Layers,   color: "#7c3aed", bg: "#f5f3ff", title: "Flujo completo",             desc: "Resumen + acciones en integraciones + recordatorios. Todo en uno.",        badge: "⭐ Todo"   },
+];
+
+function ModeSelector({ onSelect }: { onSelect: (m: Mode) => void }) {
+  return (
+    <div className="flex h-full items-center justify-center bg-slate-50 px-6 py-10 overflow-y-auto">
+      <div className="w-full max-w-2xl">
+        <div className="text-center mb-8">
+          <div className="w-14 h-14 rounded-2xl bg-[#050040] flex items-center justify-center mx-auto mb-4 shadow-md">
+            <Cpu className="w-7 h-7 text-white" />
+          </div>
+          <h1 className="text-3xl font-bold text-slate-900">¿Qué quieres hacer hoy?</h1>
+          <p className="text-base text-slate-400 mt-2">Elige el tipo de análisis para tu reunión</p>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          {MODE_OPTIONS.map((opt) => {
+            const Icon = opt.icon;
+            return (
+              <motion.button
+                key={opt.id}
+                onClick={() => onSelect(opt.id)}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                whileHover={{ scale: 1.02, y: -3, boxShadow: "0 8px 24px -4px rgba(0,0,0,0.10)" }}
+                whileTap={{ scale: 0.98 }}
+                transition={{ delay: MODE_OPTIONS.findIndex((o) => o.id === opt.id) * 0.06, duration: 0.3 }}
+                className="relative text-left p-6 rounded-2xl border-2 border-slate-200 bg-white hover:border-slate-300 group"
+              >
+                {opt.badge && (
+                  <span className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: opt.bg, color: opt.color }}>
+                    {opt.badge}
+                  </span>
+                )}
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ backgroundColor: opt.bg }}>
+                  <Icon className="w-6 h-6" style={{ color: opt.color }} />
+                </div>
+                <h3 className="text-base font-bold text-slate-800 group-hover:text-[#050040] transition-colors">{opt.title}</h3>
+                <p className="text-sm text-slate-400 mt-1.5 leading-relaxed">{opt.desc}</p>
+              </motion.button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
@@ -113,7 +181,7 @@ function DestBadge({ dest }: { dest: Destination }) {
 // ── Left stepper ───────────────────────────────────────────────────────────────
 function StepperPanel({
   step, session, room, calMatch, approvedCount, totalCount,
-  onHistory, pendingCount,
+  onHistory, pendingCount, mode,
 }: {
   step: WizardStep;
   session: ApiSession | null;
@@ -123,7 +191,9 @@ function StepperPanel({
   totalCount: number;
   onHistory: () => void;
   pendingCount: number;
+  mode: Mode | null;
 }) {
+  const visibleSteps = stepsForMode(mode);
   return (
     <div className="flex flex-col h-full bg-white border-r border-slate-100">
       {/* Logo */}
@@ -147,7 +217,7 @@ function StepperPanel({
 
       {/* Steps */}
       <div className="flex-1 overflow-y-auto px-5 py-6 space-y-2">
-        {STEPS.map((s, i) => {
+        {visibleSteps.map((s, i) => {
           const done    = i < step;
           const current = i === step;
           const pending = i > step;
@@ -370,6 +440,7 @@ function ActionCard({ item, onToggle, onEdit }: {
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 export default function MeetActionView() {
+  const [mode,      setMode]      = React.useState<Mode | null>(null);
   const [step,      setStep]      = React.useState<WizardStep>(0);
   const [dir,       setDir]       = React.useState<"fwd" | "back">("fwd");
   const [animating, setAnimating] = React.useState(false);
@@ -393,8 +464,9 @@ export default function MeetActionView() {
   const [showHistory, setShowHistory] = React.useState(false);
   const [history,     setHistory]     = React.useState<HistoryEntry[]>([]);
 
-  const [loading,      setLoading]      = React.useState(true);
-  const [itemsLoading, setItemsLoading] = React.useState(false);
+  const [loading,           setLoading]           = React.useState(true);
+  const [itemsLoading,      setItemsLoading]      = React.useState(false);
+  const [sessionReminders,  setSessionReminders]  = React.useState<SessionReminder[]>([]);
   const [filterType,   setFilterType]   = React.useState<ActionType | "all">("all");
   const [search,       setSearch]       = React.useState("");
 
@@ -472,7 +544,29 @@ export default function MeetActionView() {
     if (animating) return; setDir(direction); setAnimating(true);
     setTimeout(() => { setStep(next); setAnimating(false); }, 260);
   }
-  function goNext() { if (step < 3) navigate((step + 1) as WizardStep, "fwd"); }
+  async function handleExecuteSummary() {
+    setExecuting(true); setExecStep(0);
+    await new Promise((r) => setTimeout(r, 900));
+    setExecuting(false); setExecDone(true);
+  }
+
+  async function handleExecuteReminders() {
+    setExecuting(true); setExecStep(0);
+    try {
+      const r = await fetch("/api/recordatorios");
+      const d = r.ok ? await r.json() : { reminders: [] };
+      const found = ((d.reminders ?? []) as SessionReminder[]).filter((x) => x.session_id === selectedId);
+      setSessionReminders(found);
+    } finally {
+      setExecuting(false); setExecDone(true);
+    }
+  }
+
+  function goNext() {
+    if (mode === "summary"   && step === 0) { handleExecuteSummary();   return; }
+    if (mode === "reminders" && step === 0) { handleExecuteReminders(); return; }
+    if (step < 3) navigate((step + 1) as WizardStep, "fwd");
+  }
   function goBack() { if (step > 0) navigate((step - 1) as WizardStep, "back"); }
 
   async function handleExecute() {
@@ -504,9 +598,9 @@ export default function MeetActionView() {
   }
 
   function resetWizard() {
-    setStep(0); setSelectedId(null); setSelectedRoom(null); setSelectedCalMatch(null);
+    setMode(null); setStep(0); setSelectedId(null); setSelectedRoom(null); setSelectedCalMatch(null);
     setItems([]); setRoomMembers([]); setMatchedPeople([]); setUnmatchedPpl([]); setMatchPct(0);
-    setExecDone(false); setExecStep(0); setSearch(""); setFilterType("all"); loadSessions();
+    setExecDone(false); setExecStep(0); setSearch(""); setFilterType("all"); setSessionReminders([]); loadSessions();
   }
 
   const historyGroups = React.useMemo(() => {
@@ -514,6 +608,11 @@ export default function MeetActionView() {
     for (const h of history) { const l = g.get(h.meeting_name) ?? []; l.push(h); g.set(h.meeting_name, l); }
     return [...g.entries()];
   }, [history]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Mode selector
+  // ─────────────────────────────────────────────────────────────────────────
+  if (!mode) return <ModeSelector onSelect={(m) => setMode(m)} />;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Historial
@@ -565,13 +664,109 @@ export default function MeetActionView() {
   // Ejecución
   // ─────────────────────────────────────────────────────────────────────────
   if (executing || execDone) {
+    // ── Summary / Reminders modes: lightweight result screen ─────────────────
+    if (mode === "summary" || mode === "reminders") {
+      const execStepIdx = mode === "summary" ? 1 : 1;
+      return (
+        <div className="flex h-full overflow-hidden">
+          <div className="w-64 shrink-0">
+            <StepperPanel step={execStepIdx as WizardStep} session={session} room={null} calMatch={null}
+              approvedCount={0} totalCount={0}
+              onHistory={() => setShowHistory(true)} pendingCount={pendingCount} mode={mode} />
+          </div>
+          <div className="flex-1 overflow-y-auto bg-slate-50 flex items-center justify-center p-8">
+            <div className="w-full max-w-lg">
+              {executing ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-5">
+                  <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.9, ease: "linear" }}
+                    className="w-12 h-12 border-4 border-slate-200 border-t-[#050040] rounded-full" />
+                  <p className="text-lg font-semibold text-slate-700">
+                    {mode === "summary" ? "Generando resumen…" : "Detectando recordatorios…"}
+                  </p>
+                </div>
+              ) : mode === "summary" ? (
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-[0_8px_40px_-8px_rgba(5,0,64,0.10)] overflow-hidden">
+                  <div className="bg-gradient-to-br from-[#050040] to-indigo-600 px-8 py-7 text-white text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center mx-auto mb-3">
+                      <FileText className="w-7 h-7 text-white" />
+                    </div>
+                    <h2 className="text-xl font-bold">{session?.meeting_name ?? "Reunión"}</h2>
+                    <p className="text-sm text-white/60 mt-1">{session?.meeting_date ? fmtDate(session.meeting_date) : ""}</p>
+                  </div>
+                  <div className="px-8 py-6 space-y-5">
+                    {session?.summary_ai ? (
+                      <p className="text-sm text-slate-600 leading-relaxed">{session.summary_ai}</p>
+                    ) : (
+                      <p className="text-sm text-slate-400 italic">Sin resumen disponible para esta reunión.</p>
+                    )}
+                    <div className="grid grid-cols-3 gap-3 pt-2">
+                      {[
+                        { n: session?.tasks_count ?? 0,      label: "Tareas"      },
+                        { n: session?.decisions_count ?? 0,  label: "Decisiones"  },
+                        { n: session?.next_steps_count ?? 0, label: "Próx. pasos" },
+                      ].map(({ n, label }) => (
+                        <div key={label} className="bg-slate-50 rounded-xl p-3 text-center border border-slate-100">
+                          <p className="text-2xl font-bold text-[#050040]">{n}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">{label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={resetWizard}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-[#050040] text-white rounded-xl text-sm font-semibold hover:bg-[#050040]/90 transition-colors">
+                      <RefreshCw className="w-4 h-4" />Analizar otra reunión
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Reminders result */
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-[0_8px_40px_-8px_rgba(5,0,64,0.10)] overflow-hidden">
+                  <div className="bg-gradient-to-br from-amber-500 to-orange-500 px-8 py-7 text-white text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center mx-auto mb-3">
+                      <Bell className="w-7 h-7 text-white" />
+                    </div>
+                    <h2 className="text-xl font-bold">Recordatorios detectados</h2>
+                    <p className="text-sm text-white/70 mt-1">{session?.meeting_name ?? "Reunión"}</p>
+                  </div>
+                  <div className="px-8 py-6">
+                    {sessionReminders.length === 0 ? (
+                      <div className="text-center py-6">
+                        <p className="text-base font-semibold text-slate-500">No se encontraron recordatorios de IA en esta reunión.</p>
+                        <p className="text-sm text-slate-400 mt-1">La IA los detecta automáticamente al procesar la grabación.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 mb-4">
+                        {sessionReminders.map((r) => (
+                          <div key={r.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-100">
+                            <Bell className="w-4 h-4 text-amber-500 shrink-0" />
+                            <p className="text-sm text-slate-700 flex-1">{r.title}</p>
+                            {r.deadline && (
+                              <span className="text-xs text-amber-600 font-semibold">{fmtDate(r.deadline)}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <button onClick={resetWizard}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-[#050040] text-white rounded-xl text-sm font-semibold hover:bg-[#050040]/90 transition-colors mt-2">
+                      <RefreshCw className="w-4 h-4" />Analizar otra reunión
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Actions / Full mode: original progress screen ─────────────────────────
     const totalSteps = destinations.length + 3;
     return (
       <div className="flex h-full overflow-hidden">
         <div className="w-64 shrink-0">
           <StepperPanel step={3} session={session} room={selectedRoom} calMatch={selectedCalMatch}
             approvedCount={approved.length} totalCount={items.length}
-            onHistory={() => setShowHistory(true)} pendingCount={pendingCount} />
+            onHistory={() => setShowHistory(true)} pendingCount={pendingCount} mode={mode} />
         </div>
         <div className="flex-1 overflow-y-auto bg-slate-50 flex items-center justify-center p-8">
           <div className="w-full max-w-lg">
@@ -648,7 +843,7 @@ export default function MeetActionView() {
       <div className="w-64 shrink-0">
         <StepperPanel step={step} session={session} room={selectedRoom} calMatch={selectedCalMatch}
           approvedCount={approved.length} totalCount={items.length}
-          onHistory={() => setShowHistory(true)} pendingCount={pendingCount} />
+          onHistory={() => setShowHistory(true)} pendingCount={pendingCount} mode={mode} />
       </div>
 
       {/* ── Contenido del paso ─────────────────────────────────────────── */}
@@ -657,13 +852,13 @@ export default function MeetActionView() {
         {/* Header del paso */}
         <div className="bg-white border-b border-slate-100 px-8 py-6 shrink-0">
           <h1 className="text-2xl font-bold text-slate-900">
-            {step === 0 && "¿Qué reunión quieres procesar?"}
+            {step === 0 && (mode === "summary" ? "¿Qué reunión quieres resumir?" : mode === "reminders" ? "¿De qué reunión extraer recordatorios?" : "¿Qué reunión quieres procesar?")}
             {step === 1 && "¿A qué sala pertenece?"}
             {step === 2 && "¿Con qué evento del calendario coincide?"}
             {step === 3 && "Revisa y aprueba las acciones"}
           </h1>
           <p className="text-base text-slate-500 mt-1">
-            {step === 0 && "Selecciona la grabación pendiente de revisión."}
+            {step === 0 && (mode === "summary" ? "La IA generará un resumen ejecutivo de la reunión seleccionada." : mode === "reminders" ? "Se extraerán las tareas detectadas por IA y se añadirán a tus recordatorios." : "Selecciona la grabación pendiente de revisión.")}
             {step === 1 && "La IA analizará las personas mencionadas vs los miembros de la sala."}
             {step === 2 && "Selecciona el evento más cercano a la fecha de la grabación."}
             {step === 3 && "Aprueba o rechaza cada acción. Solo las aprobadas se ejecutarán."}
@@ -918,8 +1113,11 @@ export default function MeetActionView() {
                   ? "bg-[#050040] text-white hover:bg-[#050040]/90 shadow-md shadow-[#050040]/20"
                   : "bg-slate-100 text-slate-400 cursor-not-allowed",
               )}>
-              {step === 1 || step === 2 ? "Continuar" : "Siguiente"}
-              <ArrowRight className="w-5 h-5" />
+              {step === 0 && (mode === "summary" || mode === "reminders")
+                ? <><Sparkles className="w-5 h-5" />Generar</>
+                : step === 0
+                  ? <>Siguiente <ArrowRight className="w-5 h-5" /></>
+                  : <>Continuar <ArrowRight className="w-5 h-5" /></>}
             </button>
           ) : (
             <button onClick={handleExecute} disabled={approved.length === 0}

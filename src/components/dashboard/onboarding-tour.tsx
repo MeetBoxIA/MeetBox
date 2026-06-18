@@ -3,7 +3,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import {
   ArrowRight, ArrowLeft, X, Calendar, DoorOpen, BookOpen,
-  Video, Sparkles, Check, LayoutDashboard,
+  Video, Sparkles, Check, LayoutDashboard, Plug2, Zap, Link2,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ function buildTours(name: string): Record<string, SectionTour> {
         {
           badge: "Inicio", icon: LayoutDashboard,
           title: "Tu día en un vistazo",
-          description: "Desde aquí navegas a tu calendario, salas, notas y reuniones. Te iremos guiando por cada sección la primera vez que la abras.",
+          description: "Desde aquí navegas a tu calendario, workspaces, notas y reuniones. Te iremos guiando por cada sección la primera vez que la abras.",
           image: "/undraw_online-meeting_qe61.svg",
           hint: "Las opciones de tu cuenta están en tu foto arriba a la derecha.",
         },
@@ -44,23 +44,24 @@ function buildTours(name: string): Record<string, SectionTour> {
       color: "#050040",
       steps: [
         {
-          badge: "MeetCalendar", icon: Calendar,
-          title: "Tu calendario, tu ritmo",
-          description: "Cambia entre vistas de mes, semana o día. Haz clic en cualquier día para ver su detalle o arrastra eventos para reorganizarlos.",
-          image: "/undraw_booking_8vl5.svg",
+          badge: "Recordatorios", icon: Sparkles,
+          title: "Tu memoria personal",
+          description: "Los recordatorios son cosas pequeñas pero importantes que mencionas en reuniones y que no deben perderse. No son tickets ni tareas formales — son para ti y el sistema nada más.",
+          image: "/undraw_business-decisions_7vkl.svg",
         },
         {
-          badge: "Crear eventos", icon: Calendar,
-          title: "Reuniones, eventos y recordatorios",
-          description: "Tres tipos de eventos, cada uno con su color. Activa recordatorios con notificación en el navegador o por correo.",
-          image: "/undraw_morning-news_h9nz.svg",
+          badge: "Gestos", icon: Sparkles,
+          title: "Desliza para actuar",
+          description: "Desliza una tarjeta hacia la derecha para marcarla como completada, o hacia la izquierda para eliminarla. Toca cualquier tarjeta para editarla.",
+          image: "/undraw_online-meeting_qe61.svg",
+          hint: "También puedes tocar el círculo de la izquierda para completar sin deslizar.",
         },
         {
-          badge: "Compartir", icon: Calendar,
-          title: "Un enlace para todo el equipo",
-          description: "Comparte tu calendario con un enlace público o suscríbete desde Google Calendar y Apple Calendar con un solo clic.",
+          badge: "IA integrada", icon: Sparkles,
+          title: "Meety y la IA te ayudan",
+          description: "La IA detecta tareas fantasma en tus reuniones y las añade aquí automáticamente. Además, cada recordatorio tiene un botón para que Meety te ayude a completarlo.",
           image: "/undraw_collaboration_hkrb.svg",
-          hint: "Puedes regenerar el enlace cuando quieras para invalidar el anterior.",
+          hint: "Puedes pedirle a Meety en el chat: \"recuérdame hacer X\" y lo creará por ti.",
         },
       ],
     },
@@ -69,15 +70,15 @@ function buildTours(name: string): Record<string, SectionTour> {
       color: "#059669",
       steps: [
         {
-          badge: "Salas", icon: DoorOpen,
+          badge: "Workspaces", icon: DoorOpen,
           title: "Espacios para tus equipos",
-          description: "Crea una sala para cada propósito: junta directiva, producto, clientes. Personaliza con emoji y color para reconocerlas al instante.",
+          description: "Crea un workspace para cada propósito: junta directiva, producto, clientes. Personaliza con emoji y color para reconocerlos al instante.",
           image: "/undraw_collaboration_hkrb.svg",
         },
         {
           badge: "Personas y reuniones", icon: DoorOpen,
           title: "Tu equipo en cada sala",
-          description: "Añade personas con su nombre y correo. Programa reuniones desde la sala y aparecerán automáticamente en tu MeetCalendar del día.",
+          description: "Añade personas con su nombre y correo. Programa reuniones desde el workspace y aparecerán automáticamente en tu calendario del día.",
           image: "/undraw_meet-the-team_fau8.svg",
         },
       ],
@@ -125,6 +126,32 @@ function buildTours(name: string): Record<string, SectionTour> {
         },
       ],
     },
+
+    integrations: {
+      color: "#0891b2",
+      steps: [
+        {
+          badge: "Integraciones", icon: Plug2,
+          title: "Conecta tus herramientas",
+          description: "Vincula Jira, Slack, Notion, Teams y Zoom a MeetBox. Una vez conectados, tus reuniones pueden enviar tareas, mensajes y notas automáticamente a cada plataforma.",
+          image: "/undraw_collaboration_hkrb.svg",
+        },
+        {
+          badge: "Con MeetAction", icon: Zap,
+          title: "Las integraciones trabajan con MeetAction",
+          description: "Cuando la IA extrae acciones de una reunión, tú decides cuáles aprobar. Cada acción se envía a la integración correcta: tareas → Jira, avisos → Slack, notas → Notion.",
+          image: "/undraw_business-decisions_7vkl.svg",
+          hint: "Puedes rechazar acciones individuales antes de ejecutar. MeetAction nunca actúa sin tu aprobación.",
+        },
+        {
+          badge: "Gestión", icon: Link2,
+          title: "Conecta y desconecta cuando quieras",
+          description: "Cada integración muestra si está activa o no. Puedes revocar el acceso en cualquier momento desde esta pantalla, sin afectar al resto de herramientas.",
+          image: "/undraw_programming_j1zw.svg",
+          hint: "Zoom requiere que aceptes los permisos desde tu cuenta de Zoom la primera vez.",
+        },
+      ],
+    },
   };
 }
 
@@ -136,6 +163,7 @@ const NAV_TO_TOUR: Record<string, string> = {
   "rooms-meetings": "rooms",
   meetbook:         "meetbook",
   meetings:         "meetings",
+  integrations:     "integrations",
 };
 
 function flagKey(uid: string, section: string) { return `meetbox_tour_${section}_${uid}`; }

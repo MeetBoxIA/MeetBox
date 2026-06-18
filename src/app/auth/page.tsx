@@ -25,13 +25,13 @@ export default function AuthPage() {
             Tus reuniones, organizadas
           </h1>
           <p className="text-base text-white/70 mt-3 max-w-md leading-relaxed">
-            Programa, graba y comparte tus reuniones en un solo lugar. Salas, calendario y notas, todo conectado.
+            Programa, graba y comparte tus reuniones en un solo lugar. Workspaces, calendario y notas, todo conectado.
           </p>
         </div>
 
         {/* Footer feature pills */}
         <div className="relative flex flex-wrap gap-2">
-          {["MeetCalendar", "Salas", "MeetBook", "Grabaciones"].map((f) => (
+          {["MeetCalendar", "Workspaces", "MeetBook", "Grabaciones"].map((f) => (
             <span key={f} className="text-xs font-medium text-white/80 bg-white/10 border border-white/10 rounded-full px-3 py-1.5">
               {f}
             </span>

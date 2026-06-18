@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { AnalysisRepo } from "../repositories/pipeline-repo";
+import { getSupabase } from "../supabase";
 import type { Logger } from "../logger";
 import type { AnalysisResult, Destination, Priority, Severity } from "../types/pipeline";
 
@@ -21,16 +22,21 @@ y devuelves EXCLUSIVAMENTE un objeto JSON válido (sin texto adicional, sin mark
   "tasks": [
     { "title": "...", "description": "...", "assignee": "nombre o null",
       "priority": "low|medium|high|critical", "due_hint": "texto o null",
-      "destination": "jira|slack|notion|teams|meetcalendar|meetbook" }
+      "destination": "jira|slack|notion|teams|meetbook" }
   ],
   "decisions": [ { "title": "...", "detail": "...", "decided_by": "nombre o null" } ],
   "risks": [ { "title": "...", "detail": "...", "severity": "low|medium|high|critical", "owner": "nombre o null" } ],
-  "mentions": [ { "name": "Nombre Persona", "count": 2 } ]
+  "mentions": [ { "name": "Nombre Persona", "count": 2 } ],
+  "reminders": [
+    { "title": "máximo 10 palabras — cosa concreta que alguien no debe olvidar", "deadline_hint": "texto o null" }
+  ]
 }
 
 Reglas:
-- Para tareas técnicas usa destination "jira"; decisiones "notion"; riesgos "slack";
-  recordatorios/eventos "meetcalendar"; notas de referencia "meetbook".
+- Para tareas técnicas usa destination "jira"; decisiones "notion"; riesgos "slack"; notas "meetbook".
+- Los "reminders" son tareas fantasma: cosas mencionadas en la reunión que son pequeñas pero importantes,
+  que no necesitan un ticket formal sino solo que el usuario no las olvide.
+  Ej: "Confirmar disponibilidad con Carlos", "Revisar contrato antes del jueves", "Enviar enlace a Ana".
 - Extrae solo lo que realmente aparece en la transcripción. No inventes.
 - Responde en el mismo idioma de la transcripción.`;
 
@@ -64,6 +70,30 @@ export class MeetingAnalysisService {
       transcriptId: input.transcriptId, jobId: input.jobId,
       result, tokensUsed,
     });
+
+    // Persist AI-detected ghost-task reminders to the reminders table
+    const rawReminders = (result as AnalysisResult & { reminders?: { title: string; deadline_hint?: string | null }[] }).reminders ?? [];
+    if (rawReminders.length > 0) {
+      const { data: userRow } = await getSupabase().from("users").select("email").eq("id", input.userId).single();
+      const userEmail = userRow?.email as string | undefined;
+      if (userEmail) {
+        const rows = rawReminders
+          .filter((r) => r.title?.trim())
+          .map((r) => ({
+            user_email: userEmail,
+            title:      String(r.title).trim().slice(0, 200),
+            source:     "ai" as const,
+            session_id: null,
+            deadline:   null,
+            completed:  false,
+          }));
+        if (rows.length > 0) {
+          const { error: rErr } = await getSupabase().from("reminders").insert(rows);
+          if (rErr) this.log.warn("analysis: could not persist reminders", { error: rErr.message });
+          else this.log.info("analysis: persisted ghost-task reminders", { count: rows.length });
+        }
+      }
+    }
 
     this.log.info("analysis: persisted normalized entities", counts);
     return { analysisId, result };

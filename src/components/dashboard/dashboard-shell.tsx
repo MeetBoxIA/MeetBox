@@ -17,14 +17,13 @@ import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
 import { SiSlack, SiGooglecalendar, SiJira, SiNotion } from "react-icons/si";
 import { TbBrandTeams, TbBrandZoom } from "react-icons/tb";
 import { signOut } from "next-auth/react";
-import MeetBookView      from "./meetbook-view";
-import MeetCalendarView from "./meetcalendar-view";
-import RoomsView        from "./rooms-view";
-import MeetingsView     from "./meetings-view";
-import OnboardingTour  from "./onboarding-tour";
-import MeetyView       from "./meety-view";
-import MeetActionView  from "./meetaction-view";
-import PlansView       from "./plans-view";
+import MeetBookView        from "./meetbook-view";
+import RecordatoriosView  from "./recordatorios-view";
+import RoomsView          from "./rooms-view";
+import OnboardingTour     from "./onboarding-tour";
+import MeetyView          from "./meety-view";
+import MeetActionView     from "./meetaction-view";
+import PlansView          from "./plans-view";
 import { NotificationProvider, useNotifications } from "@/lib/notifications";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -40,13 +39,12 @@ interface DashboardShellProps { user: User; profile: Profile }
 // ── Nav ───────────────────────────────────────────────────────────────────────
 function getNavItems(t: (k: TranslationKey) => string) {
   return [
-    { id: "home",     label: t("nav_home"),         icon: LayoutDashboard, children: null },
-    { id: "meetings", label: t("nav_meetings"),      icon: Video,           children: null },
-    { id: "rooms",    label: t("nav_rooms"),         icon: DoorOpen,        children: null },
-    { id: "meetcalendar", label: t("nav_meetcalendar"), icon: Calendar,     children: null },
-    { id: "meetbook",     label: t("nav_meetbook"),     icon: BookOpen,     children: null },
-    { id: "meetaction",   label: "MeetAction",          icon: Cpu,          children: null },
-    { id: "integrations", label: t("nav_integrations"), icon: Puzzle,       children: null },
+    { id: "home",         label: t("nav_home"),         icon: LayoutDashboard, children: null },
+    { id: "rooms",        label: t("nav_rooms"),         icon: DoorOpen,        children: null },
+    { id: "meetcalendar", label: t("nav_meetcalendar"), icon: Bell,             children: null },
+    { id: "meetbook",     label: t("nav_meetbook"),     icon: BookOpen,         children: null },
+    { id: "meetaction",   label: "MeetAction",          icon: Cpu,              children: null },
+    { id: "integrations", label: t("nav_integrations"), icon: Puzzle,           children: null },
     {
       id: "settings", label: t("nav_settings"), icon: Settings, children: [
         { id: "settings-profile",       label: t("nav_profile"),       icon: User    },
@@ -317,7 +315,7 @@ function SidebarContent({
                 }
               </button>
 
-              {/* Reuniones hover button — only for Salas */}
+              {/* Reuniones hover button — only for Workspaces */}
               {isRooms && (
                 <button
                   onClick={(e) => { e.stopPropagation(); setActiveNav("rooms-meetings"); onClose?.(); }}
@@ -429,14 +427,220 @@ function ThemeToggleBtn() {
   );
 }
 
+// ── Mini calendar popover ─────────────────────────────────────────────────────
+interface PopoverItem {
+  key:        string;   // always unique — m-{id}-{start_at} or r-{id}
+  title:      string;
+  dateISO:    string;
+  color:      string;
+  isReminder: boolean;
+  allDay:     boolean;
+}
+
+function CalendarPopover() {
+  const today = new Date();
+  const [currentMonth, setCurrentMonth] = React.useState(
+    new Date(today.getFullYear(), today.getMonth(), 1),
+  );
+  const [items,   setItems]   = React.useState<PopoverItem[]>([]);
+  const [loading, setLoading] = React.useState(false);
+
+  const year  = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+
+  React.useEffect(() => {
+    const monthStart = new Date(year, month, 1);
+    const monthEnd   = new Date(year, month + 1, 0, 23, 59, 59);
+    const startISO   = monthStart.toISOString();
+    const endISO     = monthEnd.toISOString();
+
+    setLoading(true);
+
+    Promise.all([
+      // Meetings for the month (type="meeting" only — room meetings)
+      fetch(`/api/meetcalendar/events?start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}`)
+        .then((r) => r.ok ? r.json() : { events: [] }),
+      // All reminders — filter deadline within month client-side
+      fetch("/api/recordatorios")
+        .then((r) => r.ok ? r.json() : { reminders: [] }),
+    ])
+      .then(([evData, remData]) => {
+        type ApiEvent    = { id: string; title: string; start_at: string; color: string; all_day: boolean; type: string };
+        type ApiReminder = { id: string; title: string; deadline: string | null; completed: boolean };
+
+        const meetings: PopoverItem[] = ((evData.events ?? []) as ApiEvent[])
+          .filter((ev) => ev.type === "meeting")
+          // Recurring events share the same id — make key unique with start_at
+          .map((ev) => ({
+            key:        `m-${ev.id}-${ev.start_at}`,
+            title:      ev.title,
+            dateISO:    ev.start_at,
+            color:      ev.color || "#050040",
+            isReminder: false,
+            allDay:     ev.all_day,
+          }));
+
+        const reminders: PopoverItem[] = ((remData.reminders ?? []) as ApiReminder[])
+          .filter((r) => {
+            if (!r.deadline || r.completed) return false;
+            const d = new Date(r.deadline);
+            return d >= monthStart && d <= monthEnd;
+          })
+          .map((r) => ({
+            key:        `r-${r.id}`,
+            title:      r.title,
+            dateISO:    r.deadline!,
+            color:      "#d97706",
+            isReminder: true,
+            allDay:     false,
+          }));
+
+        setItems(
+          [...meetings, ...reminders].sort(
+            (a, b) => new Date(a.dateISO).getTime() - new Date(b.dateISO).getTime(),
+          ),
+        );
+      })
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
+  }, [year, month]);
+
+  // Group by day-of-month for the grid dots
+  const byDay = React.useMemo(() => {
+    const map: Record<number, PopoverItem[]> = {};
+    for (const item of items) {
+      const d = new Date(item.dateISO).getDate();
+      (map[d] ??= []).push(item);
+    }
+    return map;
+  }, [items]);
+
+  // Upcoming: from today onward, max 5
+  const upcoming = React.useMemo(() => {
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    return items.filter((item) => new Date(item.dateISO) >= todayStart).slice(0, 5);
+  }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startOffset = (new Date(year, month, 1).getDay() + 6) % 7;
+  const cells = Array.from({ length: startOffset + daysInMonth }, (_, i) =>
+    i < startOffset ? null : i - startOffset + 1,
+  );
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const isToday = (d: number) =>
+    d === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+
+  function fmtTime(iso: string) {
+    return new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  }
+  function fmtShortDate(iso: string) {
+    const d = new Date(iso);
+    return `${d.getDate()} ${MONTHS_ES[d.getMonth()].slice(0, 3)}`;
+  }
+
+  return (
+    <div
+      className="absolute right-0 top-full mt-2 z-50 w-[336px] bg-white rounded-2xl border border-slate-100 shadow-xl overflow-hidden"
+      style={{ animation: "notifPanel 0.16s cubic-bezier(0.16,1,0.3,1) both" }}
+    >
+      {/* Month navigation */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+        <button onClick={() => setCurrentMonth(new Date(year, month - 1, 1))}
+          className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+          <ChevronLeft className="w-4 h-4 text-slate-500" />
+        </button>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-bold text-slate-800">{MONTHS_ES[month]} {year}</p>
+          {loading && (
+            <div className="w-3 h-3 border-2 border-slate-200 border-t-[#050040] rounded-full animate-spin" />
+          )}
+        </div>
+        <button onClick={() => setCurrentMonth(new Date(year, month + 1, 1))}
+          className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+          <ChevronRight className="w-4 h-4 text-slate-500" />
+        </button>
+      </div>
+
+      {/* Calendar grid */}
+      <div className="px-3 pt-2 pb-2">
+        <div className="grid grid-cols-7 mb-1">
+          {DAYS_SHORT.map((d) => (
+            <div key={d} className="text-center text-[10px] font-semibold text-slate-400 py-1">{d}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-0.5">
+          {cells.map((day, idx) => {
+            const dayItems = day ? (byDay[day] ?? []) : [];
+            const today_   = day ? isToday(day) : false;
+            return (
+              <div key={idx} className={cn(
+                "aspect-square flex flex-col items-center justify-center rounded-lg",
+                day ? "cursor-default hover:bg-slate-50" : "pointer-events-none",
+                today_ && "bg-[#050040]",
+              )}>
+                {day && (
+                  <>
+                    <span className={cn("text-xs font-semibold", today_ ? "text-white" : "text-slate-700")}>
+                      {day}
+                    </span>
+                    {dayItems.length > 0 && (
+                      <div className="flex gap-0.5 mt-0.5">
+                        {dayItems.slice(0, 3).map((item) => (
+                          <span key={item.key} className="w-1 h-1 rounded-full"
+                            style={{ backgroundColor: today_ ? "rgba(255,255,255,0.7)" : item.color }} />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Upcoming list */}
+      <div className="border-t border-slate-100 px-4 py-3 max-h-44 overflow-y-auto">
+        {loading && items.length === 0 ? (
+          <p className="text-xs text-slate-400 text-center py-1">Cargando…</p>
+        ) : upcoming.length > 0 ? (
+          <>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Próximos</p>
+            <div className="space-y-2">
+              {upcoming.map((item) => (
+                <div key={item.key} className="flex items-center gap-2.5">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-slate-700 truncate">{item.title}</p>
+                    <p className="text-[10px] text-slate-400">
+                      {item.isReminder ? "Recordatorio" : item.allDay ? "Todo el día" : fmtTime(item.dateISO)}
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-semibold text-slate-400 shrink-0">
+                    {fmtShortDate(item.dateISO)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="text-xs text-slate-400 text-center py-1">Sin reuniones ni recordatorios próximos</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Header({ activeNav, user, onMenuClick, setActiveNav, isFreePlan }: {
   activeNav: string; user: User; onMenuClick: () => void; setActiveNav: (id: string) => void; isFreePlan: boolean;
 }) {
   const { t, locale } = useTranslation();
   const [search, setSearch] = React.useState("");
   const [searchOpen, setSearchOpen] = React.useState(false);
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  const [notifOpen, setNotifOpen] = React.useState(false);
+  const [menuOpen,     setMenuOpen]     = React.useState(false);
+  const [notifOpen,    setNotifOpen]    = React.useState(false);
+  const [calendarOpen, setCalendarOpen] = React.useState(false);
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   return (
     <header className="h-20 bg-white border-b border-slate-100 flex items-center gap-3 px-5 lg:px-8 shrink-0">
@@ -483,9 +687,27 @@ function Header({ activeNav, user, onMenuClick, setActiveNav, isFreePlan }: {
         )}
         {/* Theme toggle */}
         <ThemeToggleBtn />
+
+        {/* Calendar popover */}
         <div className="relative shrink-0">
           <button
-            onClick={() => setNotifOpen((o) => !o)}
+            onClick={() => { setCalendarOpen((o) => !o); setNotifOpen(false); }}
+            className="relative p-2 rounded-xl hover:bg-slate-50 transition-colors group shrink-0"
+            aria-label="Calendario"
+          >
+            <Calendar className="w-5 h-5 text-slate-500 group-hover:text-slate-800 transition-colors" />
+          </button>
+          {calendarOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setCalendarOpen(false)} />
+              <CalendarPopover />
+            </>
+          )}
+        </div>
+
+        <div className="relative shrink-0">
+          <button
+            onClick={() => { setNotifOpen((o) => !o); setCalendarOpen(false); }}
             className="relative p-2 rounded-xl hover:bg-slate-50 transition-colors group shrink-0"
           >
             <Bell className="w-5 h-5 text-slate-500 group-hover:text-slate-800 transition-colors" />
@@ -631,37 +853,88 @@ interface HomeMeeting {
   room: { name: string; emoji: string; color: string } | null;
 }
 
+// Unified pending item (meeting OR reminder)
+interface HomeItem {
+  key:        string;
+  kind:       "meeting" | "reminder";
+  title:      string;
+  dateISO:    string;   // start_at for meetings, deadline for reminders
+  color:      string;
+  room?:      { name: string; emoji: string; color: string } | null;
+  location?:  string | null;
+  endISO?:    string | null;
+}
+
 function homeTime(iso: string) {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }
-function relativeUntil(iso: string): string {
-  const diff = new Date(iso).getTime() - Date.now();
-  const mins = Math.round(diff / 60000);
-  if (mins <= 0) return "ahora mismo";
-  if (mins < 60) return `en ${mins} min`;
-  const hrs = Math.floor(mins / 60);
-  const rem = mins % 60;
-  if (hrs < 24) return rem > 0 ? `en ${hrs} h ${rem} min` : `en ${hrs} h`;
-  return "más tarde hoy";
-}
 
 const HOME_GATEWAYS = [
-  { id: "meetcalendar", label: "MeetCalendar", desc: "Tu calendario y eventos",        icon: Calendar, color: "#050040" },
-  { id: "rooms",        label: "Salas",        desc: "Tus espacios y equipos",         icon: DoorOpen, color: "#059669" },
-  { id: "meetbook",     label: "MeetBook",     desc: "Notas, ideas y documentos",      icon: BookOpen, color: "#7c3aed" },
-  { id: "meetings",     label: "Reuniones",    desc: "Hoy, grabaciones e historial",   icon: Video,    color: "#d97706" },
+  { id: "meetcalendar", label: "Recordatorios", desc: "Pendientes y recordatorios",  icon: Bell,     color: "#050040" },
+  { id: "rooms",        label: "Workspaces",    desc: "Tus espacios y equipos",      icon: DoorOpen, color: "#059669" },
+  { id: "meetbook",     label: "MeetBook",      desc: "Notas, ideas y documentos",   icon: BookOpen, color: "#7c3aed" },
+  { id: "meetaction",   label: "MeetAction",    desc: "Acciones IA de reuniones",    icon: Cpu,      color: "#7c3aed" },
 ];
 
 function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) => void }) {
   const { t, locale } = useTranslation();
-  const [meetings, setMeetings] = React.useState<HomeMeeting[]>([]);
-  const [loading,  setLoading]  = React.useState(true);
+  const [items,           setItems]           = React.useState<HomeItem[]>([]);
+  const [noDeadlineCount, setNoDeadlineCount] = React.useState(0);
+  const [loading,         setLoading]         = React.useState(true);
 
   React.useEffect(() => {
-    fetch("/api/meetings/today")
-      .then((r) => r.ok ? r.json() : { meetings: [] })
-      .then((d) => setMeetings(d.meetings ?? []))
+    const now       = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const todayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+    Promise.all([
+      // Today's workspace meetings — enriched with room info
+      fetch("/api/meetings/today").then((r) => r.ok ? r.json() : { meetings: [] }),
+      // All user reminders — filter to today + overdue client-side
+      fetch("/api/recordatorios").then((r) => r.ok ? r.json() : { reminders: [] }),
+    ])
+      .then(([meetData, remData]) => {
+        type ApiMeet = { id: string; title: string; start_at: string; end_at: string | null; color: string; all_day: boolean; location: string | null; room?: { name: string; emoji: string; color: string } | null };
+        type ApiRem  = { id: string; title: string; deadline: string | null; completed: boolean };
+
+        const meetings: HomeItem[] = ((meetData.meetings ?? []) as ApiMeet[])
+          .filter((m) => !m.all_day)
+          .map((m) => ({
+            key:      `m-${m.id}`,
+            kind:     "meeting" as const,
+            title:    m.title,
+            dateISO:  m.start_at,
+            color:    m.color || "#050040",
+            room:     m.room ?? null,
+            location: m.location,
+            endISO:   m.end_at,
+          }));
+
+        const rems = (remData.reminders ?? []) as ApiRem[];
+        // Show reminders due today or overdue (deadline <= todayEnd) and not completed
+        const todayRems = rems.filter((r) => {
+          if (r.completed || !r.deadline) return false;
+          const d = new Date(r.deadline);
+          return d <= todayEnd;
+        });
+        const noDL = rems.filter((r) => !r.completed && !r.deadline).length;
+
+        const reminders: HomeItem[] = todayRems.map((r) => ({
+          key:     `r-${r.id}`,
+          kind:    "reminder" as const,
+          title:   r.title,
+          dateISO: r.deadline!,
+          color:   new Date(r.deadline!) < todayStart ? "#ef4444" : "#d97706",
+        }));
+
+        setNoDeadlineCount(noDL);
+        setItems(
+          [...meetings, ...reminders].sort(
+            (a, b) => new Date(a.dateISO).getTime() - new Date(b.dateISO).getTime(),
+          ),
+        );
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -674,14 +947,15 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
     const hrs = Math.floor(mins / 60);
     const rem = mins % 60;
     if (hrs < 24) return rem > 0 ? `en ${hrs} h ${rem} min` : `en ${hrs} h`;
-    return locale === "en" ? "later today" : "más tarde hoy";
+    const d = new Date(iso);
+    return d.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
   }
 
   const homeGateways = [
-    { id: "meetcalendar", label: t("nav_meetcalendar"), desc: t("home_cal_desc"),   icon: Calendar, color: "#050040" },
+    { id: "meetcalendar", label: t("nav_meetcalendar"), desc: t("home_cal_desc"),   icon: Bell,     color: "#050040" },
     { id: "rooms",        label: t("nav_rooms"),        desc: t("home_rooms_desc"), icon: DoorOpen, color: "#059669" },
     { id: "meetbook",     label: t("nav_meetbook"),     desc: t("home_book_desc"),  icon: BookOpen, color: "#7c3aed" },
-    { id: "meetings",     label: t("nav_meetings"),     desc: t("home_meet_desc"),  icon: Video,    color: "#d97706" },
+    { id: "meetaction",   label: "MeetAction",          desc: "Acciones IA",        icon: Cpu,      color: "#7c3aed" },
   ];
 
   const hour      = new Date().getHours();
@@ -689,19 +963,22 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
   const firstName = user.name.split(" ")[0];
   const dateStr   = new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
 
-  const now      = Date.now();
-  const upcoming = meetings
-    .filter((m) => !m.all_day && new Date(m.start_at).getTime() >= now - 5 * 60000)
-    .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
-  const next     = upcoming[0] ?? null;
+  const nowTs  = Date.now();
+  const next   = items.find((item) => new Date(item.dateISO).getTime() >= nowTs - 5 * 60000) ?? null;
+  const rest   = items.filter((item) => item.key !== next?.key && new Date(item.dateISO).getTime() >= nowTs - 5 * 60000).slice(0, 4);
+  const total  = items.filter((item) => new Date(item.dateISO).getTime() >= nowTs - 5 * 60000).length + noDeadlineCount;
 
   const contextual = loading
     ? t("home_context_preparing")
     : next
-      ? <>{t("home_next_in")} <span className="text-white font-semibold">{relativeUntilLocal(next.start_at)}</span>.</>
-      : meetings.length > 0
-        ? t("home_done_today")
-        : t("home_no_meetings");
+      ? next.kind === "meeting"
+        ? <>{t("home_next_in")} <span className="text-white font-semibold">{relativeUntilLocal(next.dateISO)}</span>.</>
+        : <>Tienes un <span className="text-white font-semibold">recordatorio pendiente</span> pronto.</>
+      : noDeadlineCount > 0
+        ? <>Tienes <span className="text-white font-semibold">{noDeadlineCount} recordatorio{noDeadlineCount > 1 ? "s" : ""} activo{noDeadlineCount > 1 ? "s" : ""}</span> sin fecha.</>
+        : locale === "en"
+          ? t("home_no_meetings")
+          : t("home_no_meetings");
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -718,6 +995,11 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
           <div className="flex items-center gap-3 mb-5">
             <Avatar name={user.name} image={user.image} />
             <p className="text-sm font-medium text-white/60 capitalize">{dateStr}</p>
+            {!loading && total > 0 && (
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-white/15 text-white">
+                {total} pendiente{total > 1 ? "s" : ""}
+              </span>
+            )}
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold text-white leading-tight">
             {greeting}, {firstName}
@@ -726,23 +1008,29 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
         </div>
       </div>
 
-      {/* ── Focus: próxima reunión ── */}
+      {/* ── Focus: próxima reunión o recordatorio ── */}
       {!loading && next ? (
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
           <div className="px-6 pt-5 pb-2 flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-[#050040]" />
-            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wide">{t("home_next_meeting")}</h2>
+            {next.kind === "meeting"
+              ? <><Video  className="w-4 h-4 text-[#050040]" /><h2 className="text-xs font-bold text-slate-400 uppercase tracking-wide">{t("home_next_meeting")}</h2></>
+              : <><Bell   className="w-4 h-4 text-amber-500"  /><h2 className="text-xs font-bold text-slate-400 uppercase tracking-wide">Próximo recordatorio</h2></>
+            }
           </div>
           <div className="px-6 pb-6 flex items-center gap-5">
             <div className="text-center shrink-0 w-20">
-              <p className="text-3xl font-bold leading-none" style={{ color: next.color }}>{homeTime(next.start_at)}</p>
-              {next.end_at && <p className="text-sm text-slate-400 mt-1.5">{homeTime(next.end_at)}</p>}
+              <p className="text-3xl font-bold leading-none" style={{ color: next.color }}>
+                {next.kind === "meeting" ? homeTime(next.dateISO) : new Date(next.dateISO).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+              </p>
+              {next.kind === "meeting" && next.endISO && (
+                <p className="text-sm text-slate-400 mt-1.5">{homeTime(next.endISO)}</p>
+              )}
             </div>
             <div className="w-1.5 self-stretch rounded-full shrink-0" style={{ backgroundColor: next.color }} />
             <div className="flex-1 min-w-0">
               <span className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full mb-1.5"
                 style={{ backgroundColor: next.color + "18", color: next.color }}>
-                {relativeUntilLocal(next.start_at)}
+                {relativeUntilLocal(next.dateISO)}
               </span>
               <h3 className="text-lg font-semibold text-slate-800 truncate">{next.title}</h3>
               <div className="flex items-center gap-3 mt-1.5 flex-wrap">
@@ -754,30 +1042,68 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
                     <MapPin className="w-3.5 h-3.5 shrink-0" />{next.location}
                   </span>
                 )}
-                {upcoming.length > 1 && (
+                {rest.length > 0 && (
                   <span className="flex items-center gap-1 text-sm text-slate-400">
-                    <Clock className="w-3.5 h-3.5 shrink-0" />+{upcoming.length - 1} más hoy
+                    <Clock className="w-3.5 h-3.5 shrink-0" />+{rest.length} más
                   </span>
                 )}
               </div>
             </div>
-            <button onClick={() => onNavigate("meetcalendar")}
+            <button onClick={() => onNavigate(next.kind === "meeting" ? "rooms" : "meetcalendar")}
               className="shrink-0 flex items-center gap-1.5 px-5 py-3 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 transition-colors">
               <span className="hidden sm:inline">{t("home_view")}</span><ArrowRight className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Rest of pending items */}
+          {rest.length > 0 && (
+            <div className="border-t border-slate-100 px-6 py-3 bg-slate-50 flex flex-col gap-2">
+              {rest.map((item) => (
+                <div key={item.key} className="flex items-center gap-3 py-1">
+                  <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                  <span className="text-sm text-slate-600 font-medium flex-1 truncate">{item.title}</span>
+                  <span className="text-xs text-slate-400 shrink-0">
+                    {item.kind === "meeting" ? homeTime(item.dateISO) : new Date(item.dateISO).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                  </span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0"
+                    style={{ backgroundColor: item.color + "18", color: item.color }}>
+                    {item.kind === "meeting" ? "Reunión" : "Recordatorio"}
+                  </span>
+                </div>
+              ))}
+              {noDeadlineCount > 0 && (
+                <button onClick={() => onNavigate("meetcalendar")}
+                  className="flex items-center gap-2 py-1 text-sm text-amber-600 hover:text-amber-700 transition-colors">
+                  <Bell className="w-3.5 h-3.5" />
+                  {noDeadlineCount} recordatorio{noDeadlineCount > 1 ? "s" : ""} sin fecha pendiente{noDeadlineCount > 1 ? "s" : ""}
+                  <ArrowRight className="w-3.5 h-3.5 ml-auto" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ) : !loading && (
         <div className="bg-white rounded-2xl border border-slate-100 px-7 py-6 flex items-center gap-6">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/undraw_writing-online_x665.svg" alt="" className="hidden sm:block w-28 h-auto shrink-0" draggable={false} />
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-slate-800">{t("home_clear_day")}</h3>
-            <p className="text-sm text-slate-400 mt-1">{t("home_clear_desc")}</p>
+            {noDeadlineCount > 0 ? (
+              <>
+                <h3 className="text-lg font-semibold text-slate-800">
+                  {noDeadlineCount} recordatorio{noDeadlineCount > 1 ? "s" : ""} activo{noDeadlineCount > 1 ? "s" : ""}
+                </h3>
+                <p className="text-sm text-slate-400 mt-1">Sin fecha límite asignada. Revísalos en Recordatorios.</p>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-semibold text-slate-800">{t("home_clear_day")}</h3>
+                <p className="text-sm text-slate-400 mt-1">{t("home_clear_desc")}</p>
+              </>
+            )}
           </div>
-          <button onClick={() => onNavigate("meetbook")}
+          <button onClick={() => onNavigate(noDeadlineCount > 0 ? "meetcalendar" : "meetbook")}
             className="shrink-0 flex items-center gap-1.5 px-5 py-3 rounded-xl bg-[#050040]/8 text-[#050040] text-sm font-semibold hover:bg-[#050040]/12 transition-colors">
-            {t("home_open_meetbook")}<ArrowRight className="w-4 h-4" />
+            {noDeadlineCount > 0 ? "Ver recordatorios" : t("home_open_meetbook")}<ArrowRight className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -2052,9 +2378,10 @@ function PlaceholderView({ title }: { title: string; icon?: React.ElementType })
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
 export default function DashboardShell({ user, profile: initialProfile }: DashboardShellProps) {
-  const [activeNav,   setActiveNav]   = React.useState("home");
-  const [sidebarOpen, setSidebarOpen] = React.useState(false);
-  const [profile,     setProfile]     = React.useState<Profile>(initialProfile);
+  const [activeNav,       setActiveNav]       = React.useState("home");
+  const [sidebarOpen,     setSidebarOpen]     = React.useState(false);
+  const [profile,         setProfile]         = React.useState<Profile>(initialProfile);
+  const [meetyInitialMsg, setMeetyInitialMsg] = React.useState<string | undefined>(undefined);
 
   // No paid-subscription field exists in the DB yet, so every account is treated
   // as free. When billing lands, derive this from the user's subscription row.
@@ -2073,7 +2400,8 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
   function renderContent() {
     switch (activeNav) {
       case "home":                    return <HomeView user={user} onNavigate={setActiveNav} />;
-      case "meetcalendar":            return <MeetCalendarView />;
+      case "meetcalendar":            return <RecordatoriosView onOpenMeety={(msg) => { setMeetyInitialMsg(msg); setActiveNav("meety"); }} />;
+      case "recordatorios":           return <RecordatoriosView onOpenMeety={(msg) => { setMeetyInitialMsg(msg); setActiveNav("meety"); }} />;
       case "meetbook":                return <MeetBookView />;
       case "meetaction":              return <MeetActionView />;
       case "plans":                   return <PlansView onBack={() => setActiveNav("settings-account")} />;
@@ -2082,10 +2410,9 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
       case "settings-notifications":  return <SettingsNotifications />;
       case "settings-security":       return <SettingsSecurity />;
       case "settings-account":        return <SettingsAccount user={user} onNavigate={setActiveNav} />;
-      case "meetings":                return <MeetingsView />;
       case "rooms":                   return <RoomsView />;
       case "rooms-meetings":          return <RoomsView />;
-      case "meety":                   return <MeetyView userName={user.name.split(" ")[0]} userImage={user.image} />;
+      case "meety":                   return <MeetyView userName={user.name.split(" ")[0]} userImage={user.image} initialMessage={meetyInitialMsg} onConsumed={() => setMeetyInitialMsg(undefined)} />;
       default:                        return <HomeView user={user} onNavigate={setActiveNav} />;
     }
   }
@@ -2113,7 +2440,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
         <Header activeNav={activeNav} user={user} onMenuClick={() => setSidebarOpen(true)} setActiveNav={setActiveNav} isFreePlan={isFreePlan} />
         <main className={cn(
           "flex-1 min-h-0",
-          (activeNav === "meetbook" || activeNav === "meetcalendar" || activeNav === "meety" || activeNav === "meetaction")
+          (activeNav === "meetbook" || activeNav === "meetcalendar" || activeNav === "recordatorios" || activeNav === "meety" || activeNav === "meetaction")
             ? "overflow-hidden"
             : "overflow-y-auto p-4 sm:p-6",
         )}>

@@ -13,8 +13,8 @@ const translations = {
     // Nav
     nav_home:          "Inicio",
     nav_meetings:      "Reuniones",
-    nav_rooms:         "Salas",
-    nav_meetcalendar:  "MeetCalendar",
+    nav_rooms:         "Workspaces",
+    nav_meetcalendar:  "Recordatorios",
     nav_meetbook:      "MeetBook",
     nav_integrations:  "Integraciones",
     nav_settings:      "Configuración",
@@ -44,9 +44,9 @@ const translations = {
     // Sections titles
     section_home:          "Inicio",
     section_meetings:      "Reuniones",
-    section_rooms:         "Salas",
-    section_rooms_meetings:"Salas · Reuniones",
-    section_meetcalendar:  "MeetCalendar",
+    section_rooms:         "Workspaces",
+    section_rooms_meetings:"Workspaces · Reuniones",
+    section_meetcalendar:  "Recordatorios",
     section_meety:         "Meety · Asistente IA",
     section_meetbook:      "MeetBook",
     section_integrations:  "Integraciones",
@@ -135,7 +135,7 @@ const translations = {
     // Auth
     sign_out:       "Cerrar sesión",
     // Home gateway cards
-    home_cal_desc:   "Tu calendario y eventos",
+    home_cal_desc:   "Pendientes y recordatorios",
     home_rooms_desc: "Tus espacios y equipos",
     home_book_desc:  "Notas, ideas y documentos",
     home_meet_desc:  "Hoy, grabaciones e historial",
@@ -228,8 +228,8 @@ const translations = {
     // Nav
     nav_home:          "Home",
     nav_meetings:      "Meetings",
-    nav_rooms:         "Rooms",
-    nav_meetcalendar:  "MeetCalendar",
+    nav_rooms:         "Workspaces",
+    nav_meetcalendar:  "Reminders",
     nav_meetbook:      "MeetBook",
     nav_integrations:  "Integrations",
     nav_settings:      "Settings",
@@ -259,9 +259,9 @@ const translations = {
     // Section titles
     section_home:          "Home",
     section_meetings:      "Meetings",
-    section_rooms:         "Rooms",
-    section_rooms_meetings:"Rooms · Meetings",
-    section_meetcalendar:  "MeetCalendar",
+    section_rooms:         "Workspaces",
+    section_rooms_meetings:"Workspaces · Meetings",
+    section_meetcalendar:  "Reminders",
     section_meety:         "Meety · AI Assistant",
     section_meetbook:      "MeetBook",
     section_integrations:  "Integrations",
@@ -350,7 +350,7 @@ const translations = {
     // Auth
     sign_out:       "Sign out",
     // Home gateway cards
-    home_cal_desc:   "Your calendar and events",
+    home_cal_desc:   "Pending items and reminders",
     home_rooms_desc: "Your spaces and teams",
     home_book_desc:  "Notes, ideas and documents",
     home_meet_desc:  "Today, recordings and history",

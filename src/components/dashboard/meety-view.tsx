@@ -260,7 +260,14 @@ function ThinkingIndicator({ mode = "normal" }: { mode?: "normal" | "think" | "d
 }
 
 // ── MeetyView ─────────────────────────────────────────────────────────────────
-export default function MeetyView({ userName, userImage }: { userName: string; userImage: string | null }) {
+export default function MeetyView({
+  userName, userImage, initialMessage, onConsumed,
+}: {
+  userName: string;
+  userImage: string | null;
+  initialMessage?: string;
+  onConsumed?: () => void;
+}) {
   const { t } = useTranslation();
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
   const [activeId,      setActiveId]      = React.useState<string | null>(null);
@@ -272,7 +279,8 @@ export default function MeetyView({ userName, userImage }: { userName: string; u
   const [streamingId,   setStreamingId]   = React.useState<string | null>(null);
   const [sidebarOpen,   setSidebarOpen]   = React.useState(false); // mobile
 
-  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const scrollRef      = React.useRef<HTMLDivElement>(null);
+  const initialMsgSent = React.useRef(false);
 
   // ── Load conversations on mount ────────────────────────────────────────────
   React.useEffect(() => {
@@ -281,6 +289,15 @@ export default function MeetyView({ userName, userImage }: { userName: string; u
       .then((d) => setConversations(d.conversations ?? []))
       .finally(() => setLoadingConvs(false));
   }, []);
+
+  // ── Auto-send initialMessage when provided (from Recordatorios "Meety" btn) ─
+  React.useEffect(() => {
+    if (!initialMessage || initialMsgSent.current || loadingConvs) return;
+    initialMsgSent.current = true;
+    handleSend(initialMessage, { think: false, deep: false });
+    onConsumed?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMessage, loadingConvs]);
 
   // ── Load messages when active conversation changes ─────────────────────────
   React.useEffect(() => {

@@ -52,13 +52,13 @@ Tu personalidad: amable, eficiente, directa y conversacional. Hablas siempre en 
 
 Las cuatro áreas de MeetBox sobre las que puedes ayudar:
 • MeetCalendar — calendario y eventos (reuniones, eventos, recordatorios, vistas mes/semana/día)
-• Salas — espacios para equipos con sus personas y reuniones del día
+• Workspaces — espacios para equipos con sus personas y reuniones del día
 • MeetBook — notas y cuadernos con editor por bloques
 • Reuniones — reuniones de hoy, importación de grabaciones e historial
 
 Tienes acceso a herramientas (tools) que te permiten consultar y modificar
 los datos REALES del usuario autenticado. Úsalas siempre que la pregunta
-requiera información concreta sobre su agenda, salas, notas o grabaciones.
+requiera información concreta sobre su agenda, workspaces, notas o grabaciones.
 
 Reglas:
 - Cuando uses tools, hazlo SIN avisar al usuario; espera la respuesta y luego
@@ -230,8 +230,8 @@ function craftReply(prompt: string, mode: Mode): string {
     return "Buena idea. Cuando me termines de conectar con tu calendario podré crear el evento por ti. Por ahora, abre MeetCalendar y haz clic en el día — se abre directo el formulario.";
   if (/(nota|notas|meetbook|cuaderno|apuntes)/.test(lower))
     return "MeetBook es tu espacio para notas. Una vez activado, podré resumirlas, buscarlas o crear notas nuevas a partir del contexto.";
-  if (/(sala|salas)/.test(lower))
-    return "En Salas organizas tus reuniones por espacios o equipos. Pronto podré sugerirte qué sala usar según la reunión.";
+  if (/(sala|salas|workspace|workspaces)/.test(lower))
+    return "En Workspaces organizas tus reuniones por espacios o equipos. Pronto podré sugerirte qué workspace usar según la reunión.";
   if (/(grabaci[óo]n|recording|video|audio)/.test(lower))
     return "Las grabaciones viven en la sección Reuniones. Próximamente podré buscar momentos clave dentro de cada grabación.";
   if (/(hola|hey|qu[ée] tal|buenas|buenos)/.test(lower))

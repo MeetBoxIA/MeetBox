@@ -99,6 +99,64 @@ export const MEETY_TOOLS = [
       },
     },
   },
+  // ── Reminders / Recordatorios ─────────────────────────────────────────────
+  {
+    type: "function" as const,
+    function: {
+      name: "list_reminders",
+      description: "Returns the user's reminders (recordatorios). Use when the user asks about pending tasks, things to remember, or their reminder list.",
+      parameters: {
+        type: "object",
+        properties: {
+          filter: { type: "string", enum: ["all", "pending", "done"], description: "Filter: all, pending (incomplete), or done (completed). Defaults to pending." },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "create_reminder",
+      description: "Creates a new reminder (recordatorio) for the user. Use when the user says 'recuérdame', 'no olvidar', 'añade un recordatorio', or any request to remember something. Confirm the title before creating.",
+      parameters: {
+        type: "object",
+        properties: {
+          title:    { type: "string", description: "Short description of what the user must remember or do" },
+          deadline: { type: "string", description: "Optional deadline in ISO 8601 format (e.g. 2026-06-20T10:00:00-05:00). Only set if the user mentions a specific date/time." },
+        },
+        required: ["title"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "complete_reminder",
+      description: "Marks a reminder as completed. Use when the user says they finished or no longer need a reminder.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "ID of the reminder to mark as complete" },
+        },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "delete_reminder",
+      description: "Deletes a reminder permanently. Ask for confirmation before calling.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "ID of the reminder to delete" },
+        },
+        required: ["id"],
+      },
+    },
+  },
   {
     type: "function" as const,
     function: {
@@ -539,6 +597,51 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
         const success = await JiraService.addComment(ctx.userId, issueKey, comment);
         if (!success) return err(`Failed to add comment to ${issueKey}. Check that the issue exists.`);
         return ok({ commented: { issueKey } });
+      }
+
+      // ── Reminders ────────────────────────────────────────────────────────────
+      case "list_reminders": {
+        const filter = String(args.filter ?? "pending");
+        let q = db.from("reminders").select("*").eq("user_email", ctx.userEmail);
+        if (filter === "pending") q = q.eq("completed", false);
+        if (filter === "done")    q = q.eq("completed", true);
+        const { data, error } = await q.order("created_at", { ascending: false }).limit(30);
+        if (error) return err(error.message);
+        return ok({ count: (data ?? []).length, reminders: data ?? [] });
+      }
+
+      case "create_reminder": {
+        const title = String(args.title ?? "").trim();
+        if (!title) return err("title is required");
+        const { data, error } = await db.from("reminders").insert({
+          user_email: ctx.userEmail,
+          title,
+          source:   "ai",
+          deadline: args.deadline ?? null,
+          completed: false,
+        }).select().single();
+        if (error) return err(error.message);
+        return ok({ created: data });
+      }
+
+      case "complete_reminder": {
+        const id = String(args.id ?? "").trim();
+        if (!id) return err("id is required");
+        const { data, error } = await db.from("reminders")
+          .update({ completed: true })
+          .eq("id", id).eq("user_email", ctx.userEmail)
+          .select().single();
+        if (error) return err(error.message);
+        return ok({ completed: data });
+      }
+
+      case "delete_reminder": {
+        const id = String(args.id ?? "").trim();
+        if (!id) return err("id is required");
+        const { error } = await db.from("reminders")
+          .delete().eq("id", id).eq("user_email", ctx.userEmail);
+        if (error) return err(error.message);
+        return ok({ deleted: id });
       }
 
       default:
