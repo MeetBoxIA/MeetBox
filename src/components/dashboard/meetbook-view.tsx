@@ -596,7 +596,7 @@ function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
 }
 
 // ── MeetBookView ───────────────────────────────────────────────────────────────
-export default function MeetBookView() {
+export default function MeetBookView({ workspaceId }: { workspaceId?: string }) {
   const { addNotification } = useNotifications();
   const [notebooks,    setNotebooks]    = React.useState<Notebook[]>([]);
   const [expanded,     setExpanded]     = React.useState<Set<string>>(new Set());
@@ -637,6 +637,10 @@ export default function MeetBookView() {
 
   React.useEffect(() => {
     fetchNotebooks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]);
+
+  React.useEffect(() => {
     const close = () => { setNbEmojiPicker(null); setNoteEmojiPicker(false); };
     document.addEventListener("click", close);
     return () => {
@@ -649,7 +653,8 @@ export default function MeetBookView() {
   async function fetchNotebooks() {
     setLoading(true);
     try {
-      const res  = await fetch("/api/meetbook/notebooks");
+      const qs   = workspaceId ? `?workspaceId=${workspaceId}` : "";
+      const res  = await fetch(`/api/meetbook/notebooks${qs}`);
       const data = await res.json();
       setNotebooks(data.notebooks ?? []);
     } finally {
@@ -672,7 +677,7 @@ export default function MeetBookView() {
   async function createNotebook() {
     const res  = await fetch("/api/meetbook/notebooks", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "Sin título", emoji: "📓" }),
+      body: JSON.stringify({ title: "Sin título", emoji: "📓", workspaceId: workspaceId ?? null }),
     });
     const { notebook } = await res.json();
     setNotebooks(prev => [notebook, ...prev]);
@@ -723,7 +728,7 @@ export default function MeetBookView() {
   async function duplicateNotebook(nb: Notebook) {
     const res = await fetch("/api/meetbook/notebooks", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: `${nb.title} (copia)`, emoji: nb.emoji }),
+      body: JSON.stringify({ title: `${nb.title} (copia)`, emoji: nb.emoji, workspaceId: workspaceId ?? null }),
     });
     const { notebook: newNb } = await res.json();
     let fetchedNotes: Note[] = notesMap[nb.id] ?? [];

@@ -18,9 +18,10 @@ export async function GET(req: NextRequest) {
   const userId = await resolveUserId(session.user.email);
   if (!userId) return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
 
-  const url      = new URL(req.url);
-  const status   = url.searchParams.get("status") ?? undefined;
-  const limit    = Math.min(50, Number(url.searchParams.get("limit") ?? 20));
+  const url         = new URL(req.url);
+  const status      = url.searchParams.get("status") ?? undefined;
+  const limit       = Math.min(50, Number(url.searchParams.get("limit") ?? 20));
+  const workspaceId = url.searchParams.get("workspaceId");
 
   let query = getSupabase()
     .from("meet_action_sessions")
@@ -35,6 +36,12 @@ export async function GET(req: NextRequest) {
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(limit);
+
+  if (workspaceId) {
+    query = query.eq("room_id", workspaceId);
+  } else {
+    query = query.is("room_id", null);
+  }
 
   if (status) query = query.eq("status", status);
 

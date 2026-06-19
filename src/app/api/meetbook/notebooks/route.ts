@@ -17,20 +17,29 @@ async function resolveUserId(email: string) {
 }
 
 /** GET — return notebooks newest-first; excludes soft-deleted rows. */
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.email) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  const userId = await resolveUserId(session.user.email);
+  const userId      = await resolveUserId(session.user.email);
   if (!userId) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-  const { data, error } = await getSupabase()
+  const workspaceId = req.nextUrl.searchParams.get("workspaceId");
+
+  let query = getSupabase()
     .from("notebooks")
     .select("id, title, emoji, created_at, updated_at")
     .eq("user_id", userId)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
+  if (workspaceId) {
+    query = query.eq("room_id", workspaceId);
+  } else {
+    query = query.is("room_id", null);
+  }
+
+  const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ notebooks: data ?? [] });
 }
@@ -43,11 +52,16 @@ export async function POST(req: NextRequest) {
   const userId = await resolveUserId(session.user.email);
   if (!userId) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-  const { title = "Sin título", emoji = "📓" } = await req.json().catch(() => ({}));
+  const { title = "Sin título", emoji = "📓", workspaceId } = await req.json().catch(() => ({}));
 
   const { data, error } = await getSupabase()
     .from("notebooks")
-    .insert({ user_id: userId, title: String(title).trim() || "Sin título", emoji })
+    .insert({
+      user_id: userId,
+      title:   String(title).trim() || "Sin título",
+      emoji,
+      room_id: workspaceId ?? null,
+    })
     .select()
     .single();
 

@@ -25,6 +25,11 @@ import MeetyView          from "./meety-view";
 import MeetActionView     from "./meetaction-view";
 import PlansView          from "./plans-view";
 import { NotificationProvider, useNotifications } from "@/lib/notifications";
+import {
+  WorkspaceSelectorScreen,
+  WorkspaceSwitcher,
+  type WorkspaceInfo,
+} from "./workspace-selector";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface User    { name: string; email: string; image: string | null }
@@ -247,10 +252,16 @@ function MeetyButton({ active, onClick }: { active: boolean; onClick: () => void
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 function SidebarContent({
   user, profile, activeNav, setActiveNav, onClose, onMeetyOpen,
+  activeWorkspace, allWorkspaces, onUpdateWorkspace, onSwitchWorkspace, onBackToSelector,
 }: {
   user: User; profile: Profile;
   activeNav: string; setActiveNav: (id: string) => void;
   onClose?: () => void; onMeetyOpen: () => void;
+  activeWorkspace:   WorkspaceInfo | null;
+  allWorkspaces:     WorkspaceInfo[];
+  onUpdateWorkspace: (updated: WorkspaceInfo) => void;
+  onSwitchWorkspace: (ws: WorkspaceInfo) => void;
+  onBackToSelector:  () => void;
 }) {
   const { t } = useTranslation();
   const navItems = getNavItems(t);
@@ -278,6 +289,17 @@ function SidebarContent({
           </button>
         )}
       </div>
+
+      {/* Workspace widget */}
+      {activeWorkspace && (
+        <WorkspaceSwitcher
+          active={activeWorkspace}
+          all={allWorkspaces}
+          onUpdate={onUpdateWorkspace}
+          onSwitch={onSwitchWorkspace}
+          onBack={onBackToSelector}
+        />
+      )}
 
       {/* Nav */}
       <nav className="flex-1 px-4 py-5 space-y-1 overflow-y-auto">
@@ -437,7 +459,7 @@ interface PopoverItem {
   allDay:     boolean;
 }
 
-function CalendarPopover() {
+function CalendarPopover({ workspaceId }: { workspaceId?: string }) {
   const today = new Date();
   const [currentMonth, setCurrentMonth] = React.useState(
     new Date(today.getFullYear(), today.getMonth(), 1),
@@ -453,15 +475,15 @@ function CalendarPopover() {
     const monthEnd   = new Date(year, month + 1, 0, 23, 59, 59);
     const startISO   = monthStart.toISOString();
     const endISO     = monthEnd.toISOString();
+    const roomQs = workspaceId ? `&room_id=${workspaceId}` : "";
+    const remQs  = workspaceId ? `?workspaceId=${workspaceId}` : "";
 
     setLoading(true);
 
     Promise.all([
-      // Meetings for the month (type="meeting" only — room meetings)
-      fetch(`/api/meetcalendar/events?start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}`)
+      fetch(`/api/meetcalendar/events?start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}${roomQs}`)
         .then((r) => r.ok ? r.json() : { events: [] }),
-      // All reminders — filter deadline within month client-side
-      fetch("/api/recordatorios")
+      fetch(`/api/recordatorios${remQs}`)
         .then((r) => r.ok ? r.json() : { reminders: [] }),
     ])
       .then(([evData, remData]) => {
@@ -503,7 +525,7 @@ function CalendarPopover() {
       })
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
-  }, [year, month]);
+  }, [year, month, workspaceId]);
 
   // Group by day-of-month for the grid dots
   const byDay = React.useMemo(() => {
@@ -632,8 +654,8 @@ function CalendarPopover() {
   );
 }
 
-function Header({ activeNav, user, onMenuClick, setActiveNav, isFreePlan }: {
-  activeNav: string; user: User; onMenuClick: () => void; setActiveNav: (id: string) => void; isFreePlan: boolean;
+function Header({ activeNav, user, onMenuClick, setActiveNav, isFreePlan, workspaceId }: {
+  activeNav: string; user: User; onMenuClick: () => void; setActiveNav: (id: string) => void; isFreePlan: boolean; workspaceId?: string;
 }) {
   const { t, locale } = useTranslation();
   const [search, setSearch] = React.useState("");
@@ -700,7 +722,7 @@ function Header({ activeNav, user, onMenuClick, setActiveNav, isFreePlan }: {
           {calendarOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setCalendarOpen(false)} />
-              <CalendarPopover />
+              <CalendarPopover workspaceId={workspaceId} />
             </>
           )}
         </div>
@@ -877,7 +899,7 @@ const HOME_GATEWAYS = [
   { id: "meetaction",   label: "MeetAction",    desc: "Acciones IA de reuniones",    icon: Cpu,      color: "#7c3aed" },
 ];
 
-function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) => void }) {
+function HomeView({ user, onNavigate, workspaceId }: { user: User; onNavigate: (id: string) => void; workspaceId?: string }) {
   const { t, locale } = useTranslation();
   const [items,           setItems]           = React.useState<HomeItem[]>([]);
   const [noDeadlineCount, setNoDeadlineCount] = React.useState(0);
@@ -887,12 +909,11 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
     const now       = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
     const todayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const qs = workspaceId ? `?workspaceId=${workspaceId}` : "";
 
     Promise.all([
-      // Today's workspace meetings — enriched with room info
-      fetch("/api/meetings/today").then((r) => r.ok ? r.json() : { meetings: [] }),
-      // All user reminders — filter to today + overdue client-side
-      fetch("/api/recordatorios").then((r) => r.ok ? r.json() : { reminders: [] }),
+      fetch(`/api/meetings/today${qs}`).then((r) => r.ok ? r.json() : { meetings: [] }),
+      fetch(`/api/recordatorios${qs}`).then((r) => r.ok ? r.json() : { reminders: [] }),
     ])
       .then(([meetData, remData]) => {
         type ApiMeet = { id: string; title: string; start_at: string; end_at: string | null; color: string; all_day: boolean; location: string | null; room?: { name: string; emoji: string; color: string } | null };
@@ -937,7 +958,7 @@ function HomeView({ user, onNavigate }: { user: User; onNavigate: (id: string) =
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [workspaceId]);
 
   function relativeUntilLocal(iso: string): string {
     const diff = new Date(iso).getTime() - Date.now();
@@ -2378,14 +2399,20 @@ function PlaceholderView({ title }: { title: string; icon?: React.ElementType })
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
 export default function DashboardShell({ user, profile: initialProfile }: DashboardShellProps) {
-  const [activeNav,       setActiveNav]       = React.useState("home");
-  const [sidebarOpen,     setSidebarOpen]     = React.useState(false);
-  const [profile,         setProfile]         = React.useState<Profile>(initialProfile);
-  const [meetyInitialMsg, setMeetyInitialMsg] = React.useState<string | undefined>(undefined);
-
-  // No paid-subscription field exists in the DB yet, so every account is treated
-  // as free. When billing lands, derive this from the user's subscription row.
+  const [activeNav,        setActiveNav]        = React.useState("home");
+  const [sidebarOpen,      setSidebarOpen]      = React.useState(false);
+  const [profile,          setProfile]          = React.useState<Profile>(initialProfile);
+  const [meetyInitialMsg,  setMeetyInitialMsg]  = React.useState<string | undefined>(undefined);
+  const [activeWorkspace,  setActiveWorkspace]  = React.useState<WorkspaceInfo | null>(null);
+  const [allWorkspaces,    setAllWorkspaces]    = React.useState<WorkspaceInfo[]>([]);
   const isFreePlan = true;
+
+  // Reload workspace list whenever the active workspace changes
+  React.useEffect(() => {
+    fetch("/api/rooms")
+      .then((r) => r.ok ? r.json() : { rooms: [], joined: [] })
+      .then((d) => setAllWorkspaces([...(d.rooms ?? []), ...(d.joined ?? [])]));
+  }, [activeWorkspace?.id]);
 
   React.useEffect(() => {
     const handler = () => { if (window.innerWidth >= 1024) setSidebarOpen(false); };
@@ -2399,22 +2426,43 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
 
   function renderContent() {
     switch (activeNav) {
-      case "home":                    return <HomeView user={user} onNavigate={setActiveNav} />;
-      case "meetcalendar":            return <RecordatoriosView onOpenMeety={(msg) => { setMeetyInitialMsg(msg); setActiveNav("meety"); }} />;
-      case "recordatorios":           return <RecordatoriosView onOpenMeety={(msg) => { setMeetyInitialMsg(msg); setActiveNav("meety"); }} />;
-      case "meetbook":                return <MeetBookView />;
-      case "meetaction":              return <MeetActionView />;
+      case "home":                    return <HomeView user={user} onNavigate={setActiveNav} workspaceId={activeWorkspace!.id} />;
+      case "meetcalendar":            return <RecordatoriosView workspaceId={activeWorkspace!.id} onOpenMeety={(msg) => { setMeetyInitialMsg(msg); setActiveNav("meety"); }} />;
+      case "recordatorios":           return <RecordatoriosView workspaceId={activeWorkspace!.id} onOpenMeety={(msg) => { setMeetyInitialMsg(msg); setActiveNav("meety"); }} />;
+      case "meetbook":                return <MeetBookView workspaceId={activeWorkspace!.id} />;
+      case "meetaction":              return <MeetActionView workspaceId={activeWorkspace!.id} />;
       case "plans":                   return <PlansView onBack={() => setActiveNav("settings-account")} />;
       case "integrations":            return <IntegrationsView profile={profile} onUpdate={handleProfileUpdate} />;
       case "settings-profile":        return <SettingsProfile user={user} profile={profile} onUpdate={handleProfileUpdate} />;
       case "settings-notifications":  return <SettingsNotifications />;
       case "settings-security":       return <SettingsSecurity />;
       case "settings-account":        return <SettingsAccount user={user} onNavigate={setActiveNav} />;
-      case "rooms":                   return <RoomsView />;
-      case "rooms-meetings":          return <RoomsView />;
+      case "rooms":
+      case "rooms-meetings":          return <RoomsView workspaceId={activeWorkspace?.id} />;
       case "meety":                   return <MeetyView userName={user.name.split(" ")[0]} userImage={user.image} initialMessage={meetyInitialMsg} onConsumed={() => setMeetyInitialMsg(undefined)} />;
-      default:                        return <HomeView user={user} onNavigate={setActiveNav} />;
+      default:                        return <HomeView user={user} onNavigate={setActiveNav} workspaceId={activeWorkspace!.id} />;
     }
+  }
+
+  const sidebarProps = {
+    user, profile, activeNav, setActiveNav,
+    onMeetyOpen:       () => setActiveNav("meety"),
+    activeWorkspace,
+    allWorkspaces,
+    onUpdateWorkspace: (updated: WorkspaceInfo) => setActiveWorkspace(updated),
+    onSwitchWorkspace: (ws: WorkspaceInfo) => { setActiveWorkspace(ws); setActiveNav("home"); },
+    onBackToSelector:  () => setActiveWorkspace(null),
+  };
+
+  // ── Workspace selector gate ─────────────────────────────────────────────────
+  if (!activeWorkspace) {
+    return (
+      <NotificationProvider>
+        <WorkspaceSelectorScreen
+          onSelect={(ws) => { setActiveWorkspace(ws); setActiveNav("home"); }}
+        />
+      </NotificationProvider>
+    );
   }
 
   return (
@@ -2422,7 +2470,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* Desktop sidebar */}
       <div className="hidden lg:flex w-72 shrink-0 flex-col border-r border-slate-100">
-        <SidebarContent user={user} profile={profile} activeNav={activeNav} setActiveNav={setActiveNav} onMeetyOpen={() => setActiveNav("meety")} />
+        <SidebarContent {...sidebarProps} />
       </div>
 
       {/* Mobile sidebar overlay */}
@@ -2430,14 +2478,14 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
         <div className="fixed inset-0 z-50 lg:hidden flex">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
           <div className="relative w-72 max-w-[85vw] shadow-2xl">
-            <SidebarContent user={user} profile={profile} activeNav={activeNav} setActiveNav={setActiveNav} onClose={() => setSidebarOpen(false)} onMeetyOpen={() => setActiveNav("meety")} />
+            <SidebarContent {...sidebarProps} onClose={() => setSidebarOpen(false)} />
           </div>
         </div>
       )}
 
       {/* Main */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <Header activeNav={activeNav} user={user} onMenuClick={() => setSidebarOpen(true)} setActiveNav={setActiveNav} isFreePlan={isFreePlan} />
+        <Header activeNav={activeNav} user={user} onMenuClick={() => setSidebarOpen(true)} setActiveNav={setActiveNav} isFreePlan={isFreePlan} workspaceId={activeWorkspace?.id} />
         <main className={cn(
           "flex-1 min-h-0",
           (activeNav === "meetbook" || activeNav === "meetcalendar" || activeNav === "recordatorios" || activeNav === "meety" || activeNav === "meetaction")
@@ -2456,6 +2504,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
       />
 
     </div>
+
     </NotificationProvider>
   );
 }

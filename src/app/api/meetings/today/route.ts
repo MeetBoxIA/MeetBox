@@ -9,7 +9,7 @@
  * The time range is computed from the server's local midnight to 23:59:59
  * (UTC), which matches how events are stored.
  */
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/../auth";
 import { getSupabase } from "@/lib/supabase";
 
@@ -18,12 +18,14 @@ async function resolveUserId(email: string) {
   return data?.id as string | null;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.email) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const userId = await resolveUserId(session.user.email);
   if (!userId) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+  const workspaceId = req.nextUrl.searchParams.get("workspaceId");
 
   // Build the today window using the server's local date parts so the range
   // stays correct regardless of what the client's timezone is.
@@ -31,7 +33,7 @@ export async function GET() {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).toISOString();
   const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
 
-  const { data: events, error } = await getSupabase()
+  let query = getSupabase()
     .from("calendar_events")
     .select("id, title, description, location, start_at, end_at, all_day, color, room_id")
     .eq("user_id", userId)
@@ -39,6 +41,12 @@ export async function GET() {
     .gte("start_at", start)
     .lte("start_at", end)
     .order("start_at", { ascending: true });
+
+  if (workspaceId) {
+    query = query.eq("room_id", workspaceId);
+  }
+
+  const { data: events, error } = await query;
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

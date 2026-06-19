@@ -10,7 +10,7 @@ import {
   Plus, X, ChevronLeft, Trash2, Check, Clock,
   MapPin, DoorOpen, Video, Calendar,
   AlignLeft, Pencil, Mail, Users, ChevronDown, ChevronRight,
-  UserPlus, Building2,
+  UserPlus, Building2, LogIn, Sparkles,
 } from "lucide-react";
 import { useNotifications } from "@/lib/notifications";
 
@@ -18,6 +18,10 @@ import { useNotifications } from "@/lib/notifications";
 interface Room {
   id: string; name: string; description: string | null;
   color: string; emoji: string; created_at: string;
+  myRole?: "owner" | "admin" | "member" | "guest";
+  memberCount?: number;
+  ownerName?: string;
+  ownerEmail?: string;
 }
 interface RoomMember { id: string; name: string; email: string; }
 interface RoomMeeting {
@@ -411,8 +415,8 @@ function AddMemberForm({ roomId, onAdd, onCancel }: {
 }
 
 // ── RoomDetail (rediseñado) ────────────────────────────────────────────────────
-function RoomDetail({ room, onBack, onEdit, onDelete }: {
-  room: Room; onBack: () => void; onEdit: (r: Room) => void; onDelete: (id: string) => void;
+function RoomDetail({ room, onBack, onEdit, onDelete, hideBack }: {
+  room: Room; onBack: () => void; onEdit: (r: Room) => void; onDelete: (id: string) => void; hideBack?: boolean;
 }) {
   const { addNotification } = useNotifications();
   const [confirmDel,     setConfirmDel]     = React.useState(false);
@@ -477,10 +481,12 @@ function RoomDetail({ room, onBack, onEdit, onDelete }: {
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="bg-white border-b border-slate-100 px-6 py-5 shrink-0">
         <div className="flex items-center gap-4">
-          <button onClick={onBack}
-            className="p-2 rounded-xl hover:bg-slate-100 transition-colors text-slate-500 shrink-0">
-            <ChevronLeft className="w-5 h-5" />
-          </button>
+          {!hideBack && (
+            <button onClick={onBack}
+              className="p-2 rounded-xl hover:bg-slate-100 transition-colors text-slate-500 shrink-0">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+          )}
 
           {/* Room badge */}
           <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -868,38 +874,120 @@ function RoomCard({ room, meetingsToday, onClick }: {
 }
 
 // ── RoomsView ──────────────────────────────────────────────────────────────────
-export default function RoomsView() {
+// ── JoinWorkspaceModal ──────────────────────────────────────────────────────────
+function JoinWorkspaceModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 relative">
+        <button onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+          <X className="w-4 h-4" />
+        </button>
+        <div className="flex flex-col items-center text-center">
+          <div className="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center mb-4">
+            <LogIn className="w-7 h-7 text-purple-600" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Unirte a un workspace</h2>
+          <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+            Para unirte a un workspace existente, pide al administrador o propietario que te añada como miembro desde su panel de configuración del workspace.
+          </p>
+          <div className="w-full bg-slate-50 rounded-xl p-4 border border-slate-200 text-left mb-5">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">¿Cómo te añaden?</p>
+            <ol className="text-sm text-slate-600 space-y-1.5 list-decimal list-inside">
+              <li>El admin entra a su workspace</li>
+              <li>Va a la pestaña <strong>Personas</strong></li>
+              <li>Hace clic en <strong>+ Añadir miembro</strong></li>
+              <li>Introduce tu email: <code className="bg-slate-200 px-1.5 py-0.5 rounded text-xs">{""}</code></li>
+            </ol>
+          </div>
+          <button onClick={onClose}
+            className="w-full py-3 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 transition-colors">
+            Entendido
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── WorkspaceListItem ────────────────────────────────────────────────────────
+function WorkspaceListItem({ room, onClick }: { room: Room; onClick: () => void }) {
+  const isOwner = room.myRole === "owner";
+  return (
+    <button onClick={onClick}
+      className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-100 hover:border-slate-200 bg-white hover:bg-slate-50/80 transition-all text-left group relative overflow-hidden">
+      {/* Color accent */}
+      <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl" style={{ backgroundColor: room.color }} />
+
+      {/* Emoji avatar */}
+      <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 border border-slate-100 bg-slate-50 ml-1">
+        {room.emoji}
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-bold text-slate-900 truncate">{room.name}</span>
+          <span className={cn(
+            "px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 border",
+            isOwner
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : "bg-purple-50 text-purple-700 border-purple-200",
+          )}>
+            {isOwner ? "Propietario" : "Invitado"}
+          </span>
+        </div>
+        <p className="text-sm text-slate-400 mt-0.5 truncate">
+          {!isOwner && room.ownerName
+            ? `Invitado por ${room.ownerName}`
+            : (room.description || "Espacio de trabajo propio")}
+        </p>
+        <p className="text-xs text-slate-300 mt-0.5">{room.memberCount ?? 0} miembro{(room.memberCount ?? 0) !== 1 ? "s" : ""}</p>
+      </div>
+
+      <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+    </button>
+  );
+}
+
+// ── Main RoomsView ────────────────────────────────────────────────────────────
+export default function RoomsView({ workspaceId }: { workspaceId?: string }) {
   const { addNotification } = useNotifications();
   const [rooms,        setRooms]        = React.useState<Room[]>([]);
+  const [joined,       setJoined]       = React.useState<Room[]>([]);
+  const [userName,     setUserName]     = React.useState("");
   const [loading,      setLoading]      = React.useState(true);
   const [selectedRoom, setSelectedRoom] = React.useState<Room | null>(null);
   const [showCreate,   setShowCreate]   = React.useState(false);
+  const [showJoin,     setShowJoin]     = React.useState(false);
   const [editingRoom,  setEditingRoom]  = React.useState<Room | null>(null);
-  const [todayCounts,  setTodayCounts]  = React.useState<Record<string, number>>({});
 
   React.useEffect(() => { loadRooms(); }, []);
 
   async function loadRooms() {
     setLoading(true);
     const res = await fetch("/api/rooms");
-    if (res.ok) { const data = await res.json(); const list: Room[] = data.rooms ?? []; setRooms(list); loadTodayCounts(list); }
+    if (res.ok) {
+      const data = await res.json();
+      const allRooms: Room[] = [...(data.rooms ?? []), ...(data.joined ?? [])];
+      setRooms(data.rooms ?? []);
+      setJoined(data.joined ?? []);
+      setUserName(data.userName ?? "");
+      // If a specific workspace is pre-selected (from dashboard context), open it directly
+      if (workspaceId) {
+        const presel = allRooms.find((r) => r.id === workspaceId);
+        if (presel) setSelectedRoom(presel);
+      }
+    }
     setLoading(false);
-  }
-
-  async function loadTodayCounts(roomList: Room[]) {
-    const { start, end } = todayRange(); const counts: Record<string, number> = {};
-    await Promise.all(roomList.map(async (r) => {
-      const res = await fetch(`/api/meetcalendar/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&room_id=${r.id}`);
-      if (res.ok) { const d = await res.json(); counts[r.id] = (d.events ?? []).filter((e: { type: string }) => e.type === "meeting").length; }
-    }));
-    setTodayCounts(counts);
   }
 
   async function createRoom(data: { name: string; description: string; color: string; emoji: string }) {
     const res = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
     if (res.ok) {
-      const d = await res.json(); setRooms((p) => [...p, d.room]); setTodayCounts((p) => ({ ...p, [d.room.id]: 0 }));
-      addNotification({ title: "Sala creada", description: `La sala "${d.room.name}" se creó correctamente`, type: "room" });
+      const d = await res.json();
+      const newRoom: Room = { ...d.room, myRole: "owner", memberCount: 0 };
+      setRooms((p) => [...p, newRoom]);
+      addNotification({ title: "Workspace creado", description: `"${d.room.name}" listo para usar`, type: "room" });
     }
     setShowCreate(false);
   }
@@ -908,8 +996,9 @@ export default function RoomsView() {
     if (!editingRoom) return;
     const res = await fetch(`/api/rooms/${editingRoom.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
     if (res.ok) {
-      const d = await res.json(); setRooms((p) => p.map((r) => r.id === editingRoom.id ? d.room : r));
-      if (selectedRoom?.id === editingRoom.id) setSelectedRoom(d.room);
+      const d = await res.json();
+      setRooms((p) => p.map((r) => r.id === editingRoom.id ? { ...d.room, myRole: "owner", memberCount: r.memberCount } : r));
+      if (selectedRoom?.id === editingRoom.id) setSelectedRoom({ ...d.room, myRole: "owner" });
     }
     setEditingRoom(null);
   }
@@ -920,7 +1009,26 @@ export default function RoomsView() {
     if (selectedRoom?.id === id) setSelectedRoom(null);
   }
 
-  // Room detail — full height
+  // ── Cuando hay workspaceId activo → ir directo al detalle del workspace ─────
+  if (workspaceId) {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center h-full py-20">
+          <div className="w-8 h-8 border-2 border-[#050040]/20 border-t-[#050040] rounded-full animate-spin" />
+        </div>
+      );
+    }
+    const room = [...rooms, ...joined].find((r) => r.id === workspaceId);
+    if (!room) return null;
+    return (
+      <>
+        <RoomDetail room={room} onBack={() => {}} hideBack onEdit={(r) => setEditingRoom(r)} onDelete={(id) => deleteRoom(id)} />
+        {editingRoom && <RoomFormModal initial={editingRoom} onSave={updateRoom} onClose={() => setEditingRoom(null)} />}
+      </>
+    );
+  }
+
+  // ── Workspace detail (sin workspaceId, desde lista) ─────────────────────────
   if (selectedRoom) {
     return (
       <>
@@ -931,46 +1039,131 @@ export default function RoomsView() {
     );
   }
 
-  // Room list
+  // ── Workspace selector ──────────────────────────────────────────────────────
+  const firstName = userName.split(" ")[0] || "tú";
+  const hasRooms  = rooms.length > 0 || joined.length > 0;
+
   return (
-    <div className="space-y-6">
+    <div className="min-h-full flex items-start justify-center py-8 px-4">
       <style>{ANIM}</style>
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-[#050040]">Workspaces</h2>
-          <p className="text-sm text-slate-400 mt-0.5">{rooms.length} workspace{rooms.length !== 1 ? "s" : ""} · reuniones de hoy visibles en cada uno</p>
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-100 w-full max-w-2xl overflow-hidden"
+        style={{ animation: "rmFade .3s ease both" }}>
+
+        {/* ── Header ── */}
+        <div className="px-10 pt-10 pb-6 text-center border-b border-slate-50">
+          <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+            <DoorOpen className="w-8 h-8 text-emerald-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900">
+            ¡Bienvenid@, {firstName}! 👋
+          </h1>
+          <p className="text-sm text-slate-400 mt-2 leading-relaxed max-w-sm mx-auto">
+            {hasRooms
+              ? "Estos son tus espacios de trabajo. Elige en cuál quieres continuar."
+              : "Para empezar, elige o crea tu espacio de trabajo.\nDesde allí podrás colaborar, organizar y alcanzar tus objetivos."}
+          </p>
         </div>
-        <button onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 transition-colors shadow-sm">
-          <Plus className="w-4 h-4" />Nueva sala
-        </button>
+
+        {loading ? (
+          <div className="px-10 py-10 space-y-3">
+            {[...Array(2)].map((_, i) => (
+              <div key={i} className="h-20 bg-slate-100 rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : !hasRooms ? (
+          /* ── Empty state ── */
+          <div className="px-10 py-8">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/undraw_collaboration_hkrb.svg" alt=""
+              className="w-48 h-auto mx-auto mb-8 opacity-80" draggable={false} />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Join card */}
+              <button onClick={() => setShowJoin(true)}
+                className="flex items-center gap-4 p-5 rounded-xl border-2 border-slate-100 hover:border-emerald-200 hover:bg-emerald-50/30 text-left transition-all group relative overflow-hidden">
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 rounded-l-xl" />
+                <div className="w-11 h-11 bg-emerald-50 rounded-xl flex items-center justify-center shrink-0 ml-1">
+                  <LogIn className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-slate-800 text-sm">Unirme a un workspace</p>
+                  <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                    Únete a un espacio de trabajo existente con una invitación.
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-emerald-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </button>
+
+              {/* Create card */}
+              <button onClick={() => setShowCreate(true)}
+                className="flex items-center gap-4 p-5 rounded-xl border-2 border-slate-100 hover:border-purple-200 hover:bg-purple-50/30 text-left transition-all group relative overflow-hidden">
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-purple-500 rounded-l-xl" />
+                <div className="w-11 h-11 bg-purple-50 rounded-xl flex items-center justify-center shrink-0 ml-1">
+                  <Sparkles className="w-5 h-5 text-purple-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-slate-800 text-sm">Crear un workspace</p>
+                  <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                    Crea tu propio espacio de trabajo desde cero.
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-purple-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </button>
+            </div>
+
+            <p className="text-center text-xs text-slate-300 mt-6">
+              Siempre puedes crear o unirte a un workspace más tarde desde el menú.
+            </p>
+          </div>
+        ) : (
+          /* ── Has workspaces ── */
+          <div className="px-10 py-8 space-y-6">
+
+            {/* Mis workspaces */}
+            {rooms.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Mis workspaces</p>
+                <div className="space-y-2">
+                  {rooms.map((room) => (
+                    <WorkspaceListItem key={room.id} room={room} onClick={() => setSelectedRoom(room)} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Workspaces en los que participas */}
+            {joined.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                  Workspaces en los que participas
+                </p>
+                <div className="space-y-2">
+                  {joined.map((room) => (
+                    <WorkspaceListItem key={room.id} room={room} onClick={() => setSelectedRoom(room)} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer actions */}
+            <div className="flex flex-col items-center gap-2 pt-2 pb-2 border-t border-slate-50">
+              <button onClick={() => setShowJoin(true)}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all">
+                <Plus className="w-4 h-4" />
+                Unirse a otro workspace
+              </button>
+              <button onClick={() => setShowCreate(true)}
+                className="text-sm text-slate-400 hover:text-slate-600 transition-colors">
+                Crear un nuevo workspace
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...Array(3)].map((_, i) => <div key={i} className="bg-white rounded-2xl border border-slate-100 h-44 animate-pulse" />)}
-        </div>
-      ) : rooms.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/undraw_collaboration_hkrb.svg" alt="" className="w-60 h-auto mb-6 opacity-90" draggable={false} />
-          <h3 className="text-lg font-bold text-slate-700">Aún no hay workspaces</h3>
-          <p className="text-sm text-slate-400 mt-1 mb-5">Crea tu primer workspace para organizar reuniones y personas</p>
-          <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-5 py-3 rounded-xl bg-[#050040] text-white text-sm font-semibold hover:bg-[#050040]/90 transition-colors">
-            <Plus className="w-4 h-4" />Crear primera sala
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {rooms.map((room) => (
-            <RoomCard key={room.id} room={room} meetingsToday={todayCounts[room.id] ?? 0} onClick={() => setSelectedRoom(room)} />
-          ))}
-        </div>
-      )}
-
-      {showCreate   && <RoomFormModal onSave={createRoom} onClose={() => setShowCreate(false)} />}
-      {editingRoom  && <RoomFormModal initial={editingRoom} onSave={updateRoom} onClose={() => setEditingRoom(null)} />}
+      {showCreate && <RoomFormModal onSave={createRoom} onClose={() => setShowCreate(false)} />}
+      {showJoin   && <JoinWorkspaceModal onClose={() => setShowJoin(false)} />}
+      {editingRoom && <RoomFormModal initial={editingRoom} onSave={updateRoom} onClose={() => setEditingRoom(null)} />}
     </div>
   );
 }

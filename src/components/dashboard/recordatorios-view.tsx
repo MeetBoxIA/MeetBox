@@ -36,7 +36,7 @@ function fmtDeadline(iso: string): { label: string; urgent: boolean } {
 }
 
 // ── QuickAdd ───────────────────────────────────────────────────────────────────
-function QuickAdd({ onSave }: { onSave: (r: Reminder) => void }) {
+function QuickAdd({ onSave, workspaceId }: { onSave: (r: Reminder) => void; workspaceId?: string }) {
   const [open,     setOpen]     = React.useState(false);
   const [title,    setTitle]    = React.useState("");
   const [deadline, setDeadline] = React.useState("");
@@ -51,7 +51,7 @@ function QuickAdd({ onSave }: { onSave: (r: Reminder) => void }) {
     const res = await fetch("/api/recordatorios", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: title.trim(), source: "manual", deadline: deadline || null }),
+      body: JSON.stringify({ title: title.trim(), source: "manual", deadline: deadline || null, room_id: workspaceId ?? null }),
     });
     if (res.ok) {
       const d = await res.json();
@@ -425,18 +425,20 @@ function ProgressRing({ done, total }: { done: number; total: number }) {
 }
 
 // ── RecordatoriosView ──────────────────────────────────────────────────────────
-export default function RecordatoriosView({ onOpenMeety }: { onOpenMeety?: (msg: string) => void }) {
+export default function RecordatoriosView({ onOpenMeety, workspaceId }: { onOpenMeety?: (msg: string) => void; workspaceId?: string }) {
   const [reminders, setReminders] = React.useState<Reminder[]>([]);
   const [loading,   setLoading]   = React.useState(true);
   const [filter,    setFilter]    = React.useState<Filter>("pending");
   const { addNotification } = useNotifications();
 
   React.useEffect(() => {
-    fetch("/api/recordatorios")
+    setLoading(true);
+    const url = workspaceId ? `/api/recordatorios?workspaceId=${workspaceId}` : "/api/recordatorios";
+    fetch(url)
       .then((r) => r.ok ? r.json() : { reminders: [] })
       .then((d) => setReminders(d.reminders ?? []))
       .finally(() => setLoading(false));
-  }, []);
+  }, [workspaceId]);
 
   async function handleToggle(id: string, completed: boolean) {
     const res = await fetch(`/api/recordatorios/${id}`, {
@@ -580,7 +582,7 @@ export default function RecordatoriosView({ onOpenMeety }: { onOpenMeety?: (msg:
         ) : (
           <div className="max-w-2xl mx-auto space-y-2.5">
             {/* Quick add */}
-            <QuickAdd onSave={(r) => {
+            <QuickAdd workspaceId={workspaceId} onSave={(r) => {
               setReminders((p) => [r, ...p]);
               addNotification({ title: "Recordatorio creado", description: "", type: "event" });
             }} />

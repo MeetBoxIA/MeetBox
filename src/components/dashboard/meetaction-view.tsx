@@ -541,7 +541,7 @@ function ActionCard({ item, onToggle, onEdit }: {
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
-export default function MeetActionView() {
+export default function MeetActionView({ workspaceId }: { workspaceId?: string }) {
   const [mode,      setMode]      = React.useState<Mode | null>(null);
   const [step,      setStep]      = React.useState<WizardStep>(0);
   const [dir,       setDir]       = React.useState<"fwd" | "back">("fwd");
@@ -590,9 +590,13 @@ export default function MeetActionView() {
   // ── Bootstrap ──────────────────────────────────────────────────────────────
   const loadSessions = React.useCallback(async () => {
     setLoading(true);
-    try { const r = await fetch("/api/meetaction/sessions?limit=50"); const d = r.ok ? await r.json() : { sessions: [] }; setSessions(d.sessions ?? []); }
-    catch { setSessions([]); } finally { setLoading(false); }
-  }, []);
+    try {
+      const qs = workspaceId ? `?limit=50&workspaceId=${workspaceId}` : "?limit=50";
+      const r = await fetch(`/api/meetaction/sessions${qs}`);
+      const d = r.ok ? await r.json() : { sessions: [] };
+      setSessions(d.sessions ?? []);
+    } catch { setSessions([]); } finally { setLoading(false); }
+  }, [workspaceId]);
 
   const loadHistory = React.useCallback(async () => {
     try {
@@ -678,6 +682,7 @@ export default function MeetActionView() {
               source:     "ai",
               deadline:   null,
               session_id: selectedId,
+              room_id:    workspaceId ?? null,
             }),
           }),
         ),
@@ -718,6 +723,7 @@ export default function MeetActionView() {
                 source:     "ai",
                 deadline:   null,
                 session_id: selectedId,
+                room_id:    workspaceId ?? null,
               }),
             }),
           ),
