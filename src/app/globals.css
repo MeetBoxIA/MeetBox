@@ -1,0 +1,260 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+
+    /* MeetBox semantic tokens (light) */
+    --mb-bg-page:    #f8fafc;
+    --mb-bg-card:    #ffffff;
+    --mb-bg-raised:  #f1f5f9;
+    --mb-bg-subtle:  #e2e8f0;
+    --mb-border-sm:  #f1f5f9;
+    --mb-border-md:  #e2e8f0;
+    --mb-text-1:     #0f172a;
+    --mb-text-2:     #334155;
+    --mb-text-3:     #64748b;
+    --mb-text-4:     #94a3b8;
+    --mb-brand:      #050040;
+    --mb-brand-rgb:  5 0 64;
+    --mb-input-bg:   #f8fafc;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+
+    /* MeetBox semantic tokens (dark) */
+    --mb-bg-page:    #0d1117;
+    --mb-bg-card:    #161c2d;
+    --mb-bg-raised:  #1e2540;
+    --mb-bg-subtle:  #252f48;
+    --mb-border-sm:  #1c2540;
+    --mb-border-md:  #253050;
+    --mb-text-1:     #f1f5f9;
+    --mb-text-2:     #cbd5e1;
+    --mb-text-3:     #94a3b8;
+    --mb-text-4:     #64748b;
+    --mb-brand:      #818cf8;
+    --mb-brand-rgb:  129 140 248;
+    --mb-input-bg:   #1e2540;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; }
+  html { scroll-behavior: smooth; }
+
+  /* Smooth theme transition */
+  *, *::before, *::after {
+    transition-property: background-color, border-color, color;
+    transition-duration: 200ms;
+    transition-timing-function: ease;
+  }
+  /* Disable transition on elements that should snap (animations, transforms) */
+  [data-no-transition], .animate-ping, .animate-pulse,
+  [class*="animate-"], [class*="transition-transform"] {
+    transition: none !important;
+  }
+}
+
+/* ─── Dark mode overrides ────────────────────────────────────────────────────
+   Written outside @layer so they have higher specificity than Tailwind utilities
+   without needing !important on most properties.
+─────────────────────────────────────────────────────────────────────────── */
+
+/* Body & page background */
+.dark body { background-color: var(--mb-bg-page); color: var(--mb-text-1); }
+
+/* ── Backgrounds ── */
+.dark .bg-white          { background-color: var(--mb-bg-card) !important; }
+.dark .bg-slate-50       { background-color: var(--mb-bg-page) !important; }
+.dark .bg-slate-100      { background-color: var(--mb-bg-raised) !important; }
+.dark .bg-slate-200      { background-color: var(--mb-bg-subtle) !important; }
+.dark .bg-slate-300      { background-color: #2d3a56 !important; }
+
+/* Opacity variants */
+.dark .bg-slate-50\/40   { background-color: rgba(13,17,23,0.4) !important; }
+.dark .bg-slate-50\/60   { background-color: rgba(13,17,23,0.6) !important; }
+
+/* ── Hover backgrounds ── */
+.dark .hover\:bg-slate-50:hover   { background-color: var(--mb-bg-raised) !important; }
+.dark .hover\:bg-slate-100:hover  { background-color: var(--mb-bg-subtle) !important; }
+.dark .hover\:bg-slate-200:hover  { background-color: #2d3a56 !important; }
+
+/* ── Brand tint backgrounds ── */
+.dark .bg-\[\#050040\]\/8  { background-color: rgba(var(--mb-brand-rgb) / 0.12) !important; }
+.dark .bg-\[\#050040\]\/5  { background-color: rgba(var(--mb-brand-rgb) / 0.08) !important; }
+.dark .hover\:bg-\[\#050040\]\/8:hover  { background-color: rgba(var(--mb-brand-rgb) / 0.16) !important; }
+.dark .hover\:bg-\[\#050040\]\/12:hover { background-color: rgba(var(--mb-brand-rgb) / 0.20) !important; }
+
+/* ── Borders ── */
+.dark .border-slate-100 { border-color: var(--mb-border-sm) !important; }
+.dark .border-slate-200 { border-color: var(--mb-border-md) !important; }
+.dark .border-slate-300 { border-color: #2d3a56 !important; }
+
+/* ── Divide ── */
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--mb-border-sm); }
+.dark .divide-slate-50  > :not([hidden]) ~ :not([hidden]) { border-color: var(--mb-border-sm); }
+
+/* ── Text ── */
+/* Scale recalibrated for readability: secondary text must stay ≥4:1 contrast
+   on --mb-bg-card. The old #475569/#334155 values were nearly invisible. */
+.dark .text-slate-900 { color: #f8fafc !important; }
+.dark .text-slate-800 { color: var(--mb-text-1) !important; }
+.dark .text-slate-700 { color: var(--mb-text-2) !important; }
+.dark .text-slate-600 { color: var(--mb-text-3) !important; }
+.dark .text-slate-500 { color: #8a99b8 !important; }
+.dark .text-slate-400 { color: #7385a6 !important; }
+.dark .text-slate-300 { color: #5a6a88 !important; }
+.dark .text-slate-200 { color: #3d4a63 !important; }
+
+/* Brand text */
+.dark .text-\[\#050040\] { color: var(--mb-brand) !important; }
+.dark .hover\:text-\[\#050040\]:hover { color: var(--mb-brand) !important; }
+
+/* ── Focus rings ── */
+.dark .focus\:border-\[\#050040\]\/40:focus { border-color: rgba(var(--mb-brand-rgb) / 0.4) !important; }
+.dark .focus\:ring-\[\#050040\]\/8:focus    { --tw-ring-color: rgba(var(--mb-brand-rgb) / 0.12) !important; }
+
+/* ── Inputs ── */
+.dark input, .dark textarea {
+  background-color: var(--mb-input-bg);
+  border-color: var(--mb-border-md);
+  color: var(--mb-text-1);
+}
+.dark input::placeholder, .dark textarea::placeholder {
+  color: var(--mb-text-4);
+}
+.dark input:focus, .dark textarea:focus {
+  border-color: rgba(var(--mb-brand-rgb) / 0.5);
+  outline-color: rgba(var(--mb-brand-rgb) / 0.3);
+}
+
+/* ── Specific overrides for common component patterns ── */
+
+/* Red danger states */
+.dark .hover\:bg-red-50:hover { background-color: rgba(127,29,29,0.25) !important; }
+.dark .hover\:text-red-500:hover { color: #fca5a5 !important; }
+.dark .bg-red-500 { background-color: #dc2626 !important; }
+.dark .hover\:bg-red-600:hover { background-color: #b91c1c !important; }
+.dark .text-red-600 { color: #fca5a5 !important; }
+.dark .text-red-700 { color: #fca5a5 !important; }
+.dark .text-red-500 { color: #f87171 !important; }
+/* Static red surfaces (error banners, danger zone) — without these, the
+   light-pink bg stayed in dark mode and the overridden pink text vanished on it */
+.dark .bg-red-50  { background-color: rgba(127,29,29,0.2) !important; }
+.dark .border-red-100 { border-color: rgba(127,29,29,0.35) !important; }
+.dark .border-red-200 { border-color: rgba(127,29,29,0.4) !important; }
+.dark .hover\:bg-red-100:hover { background-color: rgba(127,29,29,0.3) !important; }
+
+/* Green states */
+.dark .bg-green-50  { background-color: rgba(6,78,59,0.25) !important; }
+.dark .text-green-700 { color: #6ee7b7 !important; }
+.dark .border-green-200 { border-color: rgba(6,78,59,0.4) !important; }
+
+/* Emerald states (Connected badges, success banners, MeetAction approvals) */
+.dark .bg-emerald-50  { background-color: rgba(6,78,59,0.25) !important; }
+.dark .bg-emerald-100 { background-color: rgba(6,78,59,0.35) !important; }
+.dark .text-emerald-600 { color: #34d399 !important; }
+.dark .text-emerald-700 { color: #6ee7b7 !important; }
+.dark .text-emerald-800 { color: #a7f3d0 !important; }
+.dark .border-emerald-100 { border-color: rgba(6,78,59,0.3) !important; }
+.dark .border-emerald-200 { border-color: rgba(6,78,59,0.45) !important; }
+.dark .hover\:bg-emerald-100:hover { background-color: rgba(6,78,59,0.4) !important; }
+
+/* Amber states (warnings, pending) */
+.dark .bg-amber-50  { background-color: rgba(120,53,15,0.25) !important; }
+.dark .text-amber-600 { color: #fbbf24 !important; }
+.dark .text-amber-700 { color: #fcd34d !important; }
+.dark .border-amber-200 { border-color: rgba(120,53,15,0.45) !important; }
+
+/* Blue states (in-progress indicators) */
+.dark .bg-blue-50  { background-color: rgba(30,58,138,0.3) !important; }
+.dark .text-blue-500 { color: #93c5fd !important; }
+.dark .text-blue-600 { color: #93c5fd !important; }
+
+/* Purple/violet */
+.dark .bg-violet-50  { background-color: rgba(76,29,149,0.2) !important; }
+.dark .text-violet-600 { color: #c4b5fd !important; }
+.dark .border-violet-200 { border-color: rgba(76,29,149,0.35) !important; }
+
+/* Scrollbars */
+.dark ::-webkit-scrollbar { width: 6px; height: 6px; }
+.dark ::-webkit-scrollbar-track { background: var(--mb-bg-card); }
+.dark ::-webkit-scrollbar-thumb { background: var(--mb-border-md); border-radius: 3px; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #3d4f70; }
+
+/* ── Active nav item ── */
+/* bg-[#050040] on dark bg needs a subtle ring to stand out */
+.dark .bg-\[\#050040\].text-white {
+  background-color: #1e1f6e !important;
+  box-shadow: 0 0 0 1px rgba(129,140,248,0.2);
+}
+.dark .hover\:bg-\[\#050040\]\/90:hover { background-color: #1e1f6e !important; }
+
+/* ── Shadow softening ── */
+.dark .shadow-sm  { box-shadow: 0 1px 2px 0 rgba(0,0,0,0.4) !important; }
+.dark .shadow-md  { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5), 0 2px 4px -1px rgba(0,0,0,0.4) !important; }
+.dark .shadow-lg  { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -2px rgba(0,0,0,0.4) !important; }
+.dark .shadow-xl  { box-shadow: 0 20px 25px -5px rgba(0,0,0,0.55), 0 10px 10px -5px rgba(0,0,0,0.44) !important; }
+
+/* ── Gradient and extra overrides for AIChatInput ── */
+.dark .bg-gradient-to-t.from-slate-50\/60 {
+  background-image: linear-gradient(to top, rgba(13, 17, 23, 0.6), transparent) !important;
+}
+
+.dark .bg-\[\#050040\]\/10 {
+  background-color: rgba(129, 140, 248, 0.15) !important;
+}
+
+.dark .outline-\[\#050040\]\/60 {
+  outline-color: rgba(129, 140, 248, 0.6) !important;
+}
+
+.dark .bg-\[\#0c0c63\] {
+  background-color: #4f46e5 !important;
+}
+
+.dark .hover\:bg-\[\#0c0c63\]:hover {
+  background-color: #6366f1 !important;
+}

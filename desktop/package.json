@@ -1,0 +1,45 @@
+{
+  "name": "meetbox-desktop",
+  "version": "1.0.0",
+  "description": "MeetBox Desktop — Captura audio de tus videollamadas sin bots",
+  "main": "out/main/index.js",
+  "author": {
+    "name": "MeetBox",
+    "email": "hola@meetbox.io"
+  },
+  "homepage": "https://meetbox.io",
+  "scripts": {
+    "dev": "electron-vite dev -- --no-sandbox",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "package": "npm run build && electron-builder",
+    "package:win": "npm run build && electron-builder --win",
+    "package:mac": "npm run build && electron-builder --mac",
+    "package:linux": "npm run build && electron-builder --linux"
+  },
+  "dependencies": {
+    "auto-launch": "^5.0.6",
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "@electron-toolkit/preload": "^3.0.1",
+    "@electron-toolkit/tsconfig": "^2.0.0",
+    "@electron-toolkit/utils": "^3.0.0",
+    "@types/auto-launch": "^5.0.5",
+    "@types/node": "^20.17.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "lucide-react": "^1.17.0",
+    "postcss": "^8.4.49",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}
