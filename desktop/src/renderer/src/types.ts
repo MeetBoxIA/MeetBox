@@ -1,6 +1,11 @@
 // Tipos compartidos entre el renderer y el preload.
 // No importar desde el preload directamente — contextos separados.
 
+export interface AudioSource {
+  id:   string
+  name: string
+}
+
 export interface ConnectionData {
   token:        string                 // short MBOX exchange code
   accessToken?: string                 // long-lived bearer token for /api/desktop/*

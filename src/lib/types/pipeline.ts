@@ -35,7 +35,7 @@ export type MeetingEventType =
 
 export type Severity     = "low" | "medium" | "high" | "critical";
 export type ActionType   = "task" | "decision" | "risk" | "next_step" | "event" | "note";
-export type Destination  = "jira" | "slack" | "notion" | "teams" | "meetcalendar" | "meetbook";
+export type Destination  = "jira" | "slack" | "notion" | "teams" | "meetcalendar" | "meetbook" | "zoom";
 export type Priority     = "low" | "medium" | "high" | "critical";
 
 // ── Records ──────────────────────────────────────────────────────────────────

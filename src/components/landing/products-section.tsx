@@ -38,37 +38,35 @@ export default function ProductsSection() {
   const { data: session } = useSession();
   const router = useRouter();
 
-  // Estado de carga por botón
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [alert, setAlert] = useState<{ msg: string; type: 'error' | 'info' } | null>(null);
 
-  // Función que llama al microservicio de pagos
+  function showAlert(msg: string, type: 'error' | 'info') {
+    setAlert({ msg, type });
+    setTimeout(() => setAlert(null), 5000);
+  }
+
   const handlePayment = async (planId: string, title: string, unitPrice: number) => {
-    // Comprar requiere una cuenta: sin sesión, llevamos al registro
-    // (la API igualmente devuelve 401; esto evita un error confuso en la UI).
     if (!session) {
-      router.push('/auth?tab=sign-up');
+      showAlert('Debes registrarte para proceder a la pasarela de pago', 'info');
+      setTimeout(() => router.push('/auth?tab=sign-up'), 2000);
       return;
     }
     try {
       setLoadingPlan(planId);
-
       const response = await fetch('/api/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ planId, title, unitPrice }),
       });
-
       const data = await response.json();
-
       if (data.initPoint) {
-        // Redirigimos al checkout de Mercado Pago
         window.location.href = data.initPoint;
       } else {
-        alert('Error al procesar el pago, intenta de nuevo');
+        showAlert('Hubo un error en el proceso de pago', 'error');
       }
-    } catch (error) {
-      console.error('Error en el pago:', error);
-      alert('Error de conexión, intenta de nuevo');
+    } catch {
+      showAlert('Hubo un error en el proceso de pago', 'error');
     } finally {
       setLoadingPlan(null);
     }
@@ -76,6 +74,20 @@ export default function ProductsSection() {
 
   return (
     <section id="productos" className="bg-white py-28 px-4">
+      {alert && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 max-w-sm w-full px-4">
+          <div className={[
+            'flex items-start gap-3 rounded-2xl px-5 py-4 shadow-xl border text-sm font-medium',
+            alert.type === 'error'
+              ? 'bg-red-50 border-red-200 text-red-700'
+              : 'bg-[#050040] border-[#050040] text-white',
+          ].join(' ')}>
+            <span className="text-lg leading-none mt-0.5">{alert.type === 'error' ? '⚠️' : 'ℹ️'}</span>
+            <span className="flex-1">{alert.msg}</span>
+            <button onClick={() => setAlert(null)} className="opacity-60 hover:opacity-100 transition-opacity leading-none text-base">✕</button>
+          </div>
+        </div>
+      )}
       <div className="max-w-6xl mx-auto">
 
         {/* Header */}

@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/../auth";
 import { getSupabase } from "@/lib/supabase";
+import { getZoomConnection, disconnectZoom } from "@/lib/integrations/zoom";
+
+async function resolveUserId(email: string): Promise<string | null> {
+  const { data } = await getSupabase().from("users").select("id").eq("email", email).single();
+  return data?.id ?? null;
+}
 
 /**
  * GET /api/auth/zoom/status
- * Devuelve si el usuario tiene Zoom conectado y su email de Zoom.
+ * Returns whether the current user has Zoom connected via OAuth.
  */
 export async function GET() {
   const session = await auth();
@@ -12,26 +18,16 @@ export async function GET() {
     return NextResponse.json({ connected: false }, { status: 401 });
   }
 
-  const { data } = await getSupabase()
-    .from("users")
-    .select("zoom_access_token, zoom_email, zoom_user_id")
-    .eq("email", session.user.email)
-    .single();
+  const userId = await resolveUserId(session.user.email);
+  if (!userId) return NextResponse.json({ connected: false });
 
-  if (!data?.zoom_access_token) {
-    return NextResponse.json({ connected: false });
-  }
-
-  return NextResponse.json({
-    connected: true,
-    zoom_email:   data.zoom_email   ?? null,
-    zoom_user_id: data.zoom_user_id ?? null,
-  });
+  const conn = await getZoomConnection(userId);
+  return NextResponse.json({ connected: !!conn });
 }
 
 /**
  * DELETE /api/auth/zoom/status
- * Desconecta Zoom revocando el token y limpiando la BD.
+ * Revokes the Zoom token and removes the connection.
  */
 export async function DELETE() {
   const session = await auth();
@@ -39,39 +35,9 @@ export async function DELETE() {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
-  // Obtener el token actual para revocarlo en Zoom
-  const { data } = await getSupabase()
-    .from("users")
-    .select("zoom_access_token")
-    .eq("email", session.user.email)
-    .single();
+  const userId = await resolveUserId(session.user.email);
+  if (!userId) return NextResponse.json({ disconnected: true });
 
-  if (data?.zoom_access_token) {
-    const credentials = Buffer.from(
-      `${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`,
-    ).toString("base64");
-
-    // Revocar el token en Zoom (best-effort, no bloqueamos si falla)
-    await fetch(`https://zoom.us/oauth/revoke?token=${data.zoom_access_token}`, {
-      method: "POST",
-      headers: { Authorization: `Basic ${credentials}` },
-    }).catch(() => {});
-  }
-
-  const { error } = await getSupabase()
-    .from("users")
-    .update({
-      zoom_access_token:  null,
-      zoom_refresh_token: null,
-      zoom_token_expiry:  null,
-      zoom_user_id:       null,
-      zoom_email:         null,
-    })
-    .eq("email", session.user.email);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
+  await disconnectZoom(userId);
   return NextResponse.json({ disconnected: true });
 }

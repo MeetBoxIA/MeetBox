@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/../auth";
 import { getSupabase } from "@/lib/supabase";
 import { sendSlackMessage } from "@/lib/integrations/slack";
+import { createZoomMeeting as createZoomMeetingOAuth } from "@/lib/integrations/zoom";
 import { JiraService } from "@/lib/services/jira-service";
 
 type Params = { params: Promise<{ id: string }> };
@@ -35,6 +36,86 @@ function slackText(item: Record<string, unknown>): string {
   return lines.join("\n");
 }
 
+/** Get a Zoom access token using Server-to-Server OAuth (account_credentials grant). */
+async function getZoomAccessToken(): Promise<string> {
+  const accountId    = process.env.ZOOM_ACCOUNT_ID?.trim();
+  const clientId     = process.env.ZOOM_CLIENT_ID?.trim();
+  const clientSecret = process.env.ZOOM_CLIENT_SECRET?.trim();
+
+  if (!accountId || !clientId || !clientSecret) {
+    throw new Error("Zoom: faltan variables de entorno (ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET)");
+  }
+
+  const res = await fetch(
+    `https://zoom.us/oauth/token?grant_type=account_credentials&account_id=${accountId}`,
+    {
+      method: "POST",
+      headers: {
+        "Authorization": "Basic " + Buffer.from(`${clientId}:${clientSecret}`).toString("base64"),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    },
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { message?: string };
+    throw new Error(`Zoom token error: ${err.message ?? res.statusText}`);
+  }
+
+  const data = await res.json() as { access_token: string };
+  return data.access_token;
+}
+
+/** Resolve the Zoom account owner's userId from ZOOM_USER_EMAIL env var. */
+function getZoomUserId(): string {
+  const email = process.env.ZOOM_USER_EMAIL?.trim();
+  if (!email) throw new Error("Zoom: falta variable de entorno ZOOM_USER_EMAIL (email del dueño de la cuenta Zoom)");
+  return email;
+}
+
+/** Create a Zoom meeting using Server-to-Server OAuth (no per-user token required). */
+async function createZoomMeeting(
+  _userId: string,
+  item: Record<string, unknown>,
+): Promise<{ ok: boolean; meetingId?: string; joinUrl?: string; error?: string }> {
+  let accessToken: string;
+  try {
+    accessToken = await getZoomAccessToken();
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+
+  let zoomUserId: string;
+  try {
+    zoomUserId = getZoomUserId();
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+
+  const res = await fetch(`https://api.zoom.us/v2/users/${zoomUserId}/meetings`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      topic:    String(item.title ?? "Reunión de MeetBox"),
+      type:     2,
+      duration: 60,
+      agenda:   String(item.description ?? ""),
+      settings: { join_before_host: true, waiting_room: false },
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { message?: string; code?: number };
+    return { ok: false, error: `Zoom API ${res.status}: ${err.message ?? res.statusText}` };
+  }
+
+  const data = await res.json() as { id: number; join_url: string };
+  return { ok: true, meetingId: String(data.id), joinUrl: data.join_url };
+}
+
 // Dispatcher — routes each action item to its destination service
 async function dispatchItem(
   userId: string,
@@ -51,7 +132,6 @@ async function dispatchItem(
       const creds = await JiraService.getCredentials(userId);
       if (!creds) return { ok: false, error: "Jira no conectado. Conecta tu cuenta desde Integraciones." };
 
-      // Determine project key: use item metadata or fall back to first available project
       let projectKey = item.project_key as string | undefined;
       if (!projectKey) {
         const projects = await JiraService.getProjects(userId);
@@ -59,7 +139,6 @@ async function dispatchItem(
         projectKey = projects[0].key;
       }
 
-      // Map MeetAction priority to Jira priority
       const priorityMap: Record<string, string> = {
         low: "Low", medium: "Medium", high: "High", critical: "Highest",
       };
@@ -76,19 +155,112 @@ async function dispatchItem(
       if (!result) return { ok: false, error: "Error al crear issue en Jira" };
       return { ok: true, external_id: result.key, external_url: result.url };
     }
-    case "meetbook":
-    case "meetcalendar":
-      // Internal destinations: handled via existing API routes
-      await new Promise((r) => setTimeout(r, 200));
-      return { ok: true, external_id: `internal-${Date.now()}`, external_url: "/dashboard" };
+    case "zoom": {
+      const result = await createZoomMeeting(userId, item);
+      if (!result.ok) return { ok: false, error: result.error };
+      // Also create a calendar event so the meeting appears in MeetCalendar
+      await createCalendarEvent(userId, item, result.joinUrl);
+      return { ok: true, external_id: result.meetingId, external_url: result.joinUrl };
+    }
+    case "meetcalendar": {
+      const calId = await createCalendarEvent(userId, item, null);
+      return { ok: true, external_id: calId ?? `cal-${Date.now()}`, external_url: "/dashboard?section=meetcalendar" };
+    }
+    case "meetbook": {
+      const noteId = await createMeetBookNote(userId, item);
+      return { ok: true, external_id: noteId ?? `note-${Date.now()}`, external_url: "/dashboard?section=meetbook" };
+    }
     default:
-      // External integrations: stub pending real OAuth + API calls
-      await new Promise((r) => setTimeout(r, 300 + Math.random() * 700));
       return { ok: true, external_id: `stub-${Date.now()}`, external_url: "#" };
   }
 }
 
-export async function POST(req: NextRequest, { params }: Params) {
+/** Create a calendar event in the user's MeetCalendar starting now. */
+async function createCalendarEvent(
+  userId: string,
+  item: Record<string, unknown>,
+  joinUrl: string | null | undefined,
+): Promise<string | null> {
+  const db    = getSupabase();
+  const start = new Date();
+  const end   = new Date(start.getTime() + 60 * 60_000); // 1 hour
+
+  const { data, error } = await db.from("calendar_events").insert({
+    user_id:        userId,
+    title:          String(item.title ?? "Reunión MeetBox"),
+    description:    item.description ? String(item.description) : null,
+    location:       joinUrl ?? null,
+    type:           "meeting",
+    start_at:       start.toISOString(),
+    end_at:         end.toISOString(),
+    all_day:        false,
+    color:          "#050040",
+    notify_email:   false,
+    notify_minutes: 15,
+    room_id:        null,
+    google_event_id: null,
+    recurrence_freq:  null,
+    recurrence_days:  null,
+    recurrence_until: null,
+  }).select("id").single();
+
+  if (error) {
+    console.error("[MeetAction] createCalendarEvent failed:", error.message, error.details ?? "");
+    return null;
+  }
+  return data?.id ?? null;
+}
+
+/** Find or create a "MeetAction" notebook, then insert a note. */
+async function createMeetBookNote(
+  userId: string,
+  item: Record<string, unknown>,
+): Promise<string | null> {
+  const db = getSupabase();
+
+  // Find existing "MeetAction" notebook or create one
+  let notebookId: string | null = null;
+  const { data: existing } = await db.from("notebooks")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("title", "MeetAction")
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (existing?.id) {
+    notebookId = existing.id;
+  } else {
+    const { data: created } = await db.from("notebooks").insert({
+      user_id: userId,
+      title:   "MeetAction",
+      emoji:   "⚡",
+    }).select("id").single();
+    notebookId = created?.id ?? null;
+  }
+
+  if (!notebookId) return null;
+
+  const lines: string[] = [];
+  if (item.description) lines.push(String(item.description));
+  if (item.assignee_name) lines.push(`\nResponsable: ${item.assignee_name}`);
+  if (item.priority) lines.push(`Prioridad: ${item.priority}`);
+
+  const { data: note, error } = await db.from("notes").insert({
+    user_id:     userId,
+    notebook_id: notebookId,
+    title:       String(item.title ?? "Nota MeetBox"),
+    emoji:       "📋",
+    content:     lines.join("\n") || "",
+  }).select("id").single();
+
+  if (error) {
+    console.error("createMeetBookNote error:", error.message);
+    return null;
+  }
+  return note?.id ?? null;
+}
+
+export async function POST(_req: NextRequest, { params }: Params) {
   const session = await auth();
   if (!session?.user?.email) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   const userId = await resolveUserId(session.user.email);

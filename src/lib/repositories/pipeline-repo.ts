@@ -283,7 +283,8 @@ export const MeetActionRepo = {
     type ItemInsert = {
       session_id: string; user_id: string; type: string; destination: string;
       status: string; title: string; description: string | null;
-      assignee_name: string | null; priority: string; sort_order: number;
+      assignee_name: string | null; assignee_email: string | null;
+      priority: string; sort_order: number; destination_meta: Record<string, unknown>;
     };
     const items: ItemInsert[] = [];
     let order = 0;
@@ -293,7 +294,8 @@ export const MeetActionRepo = {
         session_id: sessionId, user_id: input.userId, type: "task",
         destination: task.destination, status: "pending",
         title: task.title, description: task.description,
-        assignee_name: task.assignee, priority: task.priority, sort_order: order++,
+        assignee_name: task.assignee, assignee_email: null,
+        priority: task.priority, sort_order: order++, destination_meta: {},
       });
     }
     for (const d of result.decisions) {
@@ -301,7 +303,8 @@ export const MeetActionRepo = {
         session_id: sessionId, user_id: input.userId, type: "decision",
         destination: "notion", status: "pending",
         title: d.title, description: d.detail,
-        assignee_name: d.decided_by, priority: "medium", sort_order: order++,
+        assignee_name: d.decided_by, assignee_email: null,
+        priority: "medium", sort_order: order++, destination_meta: {},
       });
     }
     for (const r of result.risks) {
@@ -309,18 +312,23 @@ export const MeetActionRepo = {
         session_id: sessionId, user_id: input.userId, type: "risk",
         destination: "slack", status: "pending",
         title: r.title, description: r.detail,
-        assignee_name: r.owner, priority: r.severity === "critical" ? "critical" : "high", sort_order: order++,
+        assignee_name: r.owner, assignee_email: null,
+        priority: r.severity === "critical" ? "critical" : "high", sort_order: order++, destination_meta: {},
       });
     }
     for (const step of result.next_steps) {
       items.push({
         session_id: sessionId, user_id: input.userId, type: "next_step",
         destination: "meetcalendar", status: "pending",
-        title: step, description: null, assignee_name: null, priority: "medium", sort_order: order++,
+        title: step, description: null, assignee_name: null, assignee_email: null,
+        priority: "medium", sort_order: order++, destination_meta: {},
       });
     }
 
-    if (items.length) await db.from("meet_action_items").insert(items);
+    if (items.length) {
+      const { error: iErr } = await db.from("meet_action_items").insert(items);
+      if (iErr) throw new Error(`MeetActionRepo.createFromAnalysis items: ${iErr.message}`);
+    }
 
     return { sessionId, itemCount: items.length };
   },

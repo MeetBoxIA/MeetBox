@@ -38,7 +38,8 @@ export async function GET(req: NextRequest) {
     .limit(limit);
 
   if (workspaceId) {
-    query = query.eq("room_id", workspaceId);
+    // Show sessions for this workspace AND sessions without a workspace (created by the desktop pipeline).
+    query = query.or(`room_id.eq.${workspaceId},room_id.is.null`);
   } else {
     query = query.is("room_id", null);
   }

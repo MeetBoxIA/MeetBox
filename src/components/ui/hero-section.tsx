@@ -78,7 +78,9 @@ export default function HeroSection() {
             >
               ¿Ya tienes el tuyo?
             </a>
-            <button className="bg-[#050040] hover:bg-slate-900 text-white px-5 py-2.5 rounded-full text-sm font-medium transition">
+            <button
+              onClick={() => document.getElementById('productos')?.scrollIntoView({ behavior: 'smooth' })}
+              className="bg-[#050040] hover:bg-slate-900 text-white px-5 py-2.5 rounded-full text-sm font-medium transition">
               Reserva el tuyo
             </button>
           </div>
@@ -154,7 +156,9 @@ export default function HeroSection() {
         </div>
 
         <div className="mx-auto w-full flex flex-col sm:flex-row items-center justify-center gap-3 mt-8 px-4">
-          <button className="bg-[#050040] hover:bg-slate-900 text-white px-8 py-3.5 rounded-full font-medium transition text-sm">
+          <button
+            onClick={() => document.getElementById('productos')?.scrollIntoView({ behavior: 'smooth' })}
+            className="bg-[#050040] hover:bg-slate-900 text-white px-8 py-3.5 rounded-full font-medium transition text-sm">
             Ver los productos
           </button>
           <a

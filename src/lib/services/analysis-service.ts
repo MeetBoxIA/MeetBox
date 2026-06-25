@@ -22,7 +22,7 @@ y devuelves EXCLUSIVAMENTE un objeto JSON válido (sin texto adicional, sin mark
   "tasks": [
     { "title": "...", "description": "...", "assignee": "nombre o null",
       "priority": "low|medium|high|critical", "due_hint": "texto o null",
-      "destination": "jira|slack|notion|teams|meetbook" }
+      "destination": "jira|slack|notion|teams|meetbook|zoom" }
   ],
   "decisions": [ { "title": "...", "detail": "...", "decided_by": "nombre o null" } ],
   "risks": [ { "title": "...", "detail": "...", "severity": "low|medium|high|critical", "owner": "nombre o null" } ],
@@ -33,7 +33,7 @@ y devuelves EXCLUSIVAMENTE un objeto JSON válido (sin texto adicional, sin mark
 }
 
 Reglas generales:
-- Para tareas técnicas usa destination "jira"; decisiones "notion"; riesgos "slack"; notas "meetbook".
+- Para tareas técnicas usa destination "jira"; decisiones "notion"; riesgos "slack"; notas "meetbook"; si la tarea implica agendar, crear o programar una reunión usa destination "zoom".
 - Extrae solo lo que realmente aparece en la transcripción. No inventes.
 - Responde en el mismo idioma de la transcripción.
 
@@ -146,7 +146,7 @@ function normalize(raw: unknown): AnalysisResult {
   const r = (raw ?? {}) as Record<string, unknown>;
   const priorities: Priority[]   = ["low", "medium", "high", "critical"];
   const severities:  Severity[]  = ["low", "medium", "high", "critical"];
-  const dests: Destination[]     = ["jira", "slack", "notion", "teams", "meetcalendar", "meetbook"];
+  const dests: Destination[]     = ["jira", "slack", "notion", "teams", "meetcalendar", "meetbook", "zoom"];
 
   const arr = (v: unknown): Record<string, unknown>[] => Array.isArray(v) ? v as Record<string, unknown>[] : [];
   const str = (v: unknown, fb = ""): string => typeof v === "string" ? v : fb;

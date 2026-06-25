@@ -12,28 +12,21 @@
 import React, { useState } from 'react'
 import type { ConnectionData } from '../types'
 
-// Backend URL — overridable at build time via VITE_MEETBOX_API_URL env var.
-// The complex typeof guard handles environments where import.meta.env is
-// not available (e.g. Jest or non-Vite bundlers).
-const MEETBOX_API: string = (
-  typeof import.meta !== 'undefined' && (import.meta as Record<string, unknown>).env
-    ? ((import.meta as Record<string, unknown>).env as Record<string, string>).VITE_MEETBOX_API_URL
-    : undefined
-) ?? 'http://localhost:3000'
+const MEETBOX_API: string = import.meta.env.VITE_MEETBOX_API_URL ?? 'http://localhost:3000'
 
 interface ConnectScreenProps {
   onConnected: (data: ConnectionData) => void
 }
 
 export default function ConnectScreen({ onConnected }: ConnectScreenProps) {
-  const [code,    setCode]    = useState('')
+  const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error,   setError]   = useState<string | null>(null)
-  const [step,    setStep]    = useState<'input' | 'success'>('input')
-  const [user,    setUser]    = useState<ConnectionData['user'] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [step, setStep] = useState<'input' | 'success'>('input')
+  const [user, setUser] = useState<ConnectionData['user'] | null>(null)
 
   const normalized = code.trim().toUpperCase()
-  const isValid    = /^MBOX-[0-9A-F]{32}$/.test(normalized)
+  const isValid = /^MBOX-[0-9A-F]{32}$/.test(normalized)
 
   async function handleConnect(e: React.FormEvent) {
     e.preventDefault()
@@ -47,10 +40,10 @@ export default function ConnectScreen({ onConnected }: ConnectScreenProps) {
       const { ok, data } = await window.electronAPI.httpPost(
         `${MEETBOX_API}/api/auth/desktop/connect`,
         {
-          token:        normalized,
+          token: normalized,
           // Device fingerprint for the web "active sessions" list.
-          platform:     navigator.platform,
-          app_version:  '1.0.0',
+          platform: navigator.platform,
+          app_version: '1.0.0',
           device_label: navigator.userAgent.split(') ')[0]?.split('(')[1] ?? 'Desktop',
         },
       )
@@ -63,10 +56,10 @@ export default function ConnectScreen({ onConnected }: ConnectScreenProps) {
 
       const userData = data.user as ConnectionData['user']
       const connection: ConnectionData = {
-        token:       normalized,
+        token: normalized,
         accessToken: (data.access_token as string) ?? undefined,
-        apiUrl:      MEETBOX_API,
-        user:        userData,
+        apiUrl: MEETBOX_API,
+        user: userData,
         connectedAt: new Date().toISOString(),
       }
 

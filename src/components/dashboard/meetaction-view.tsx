@@ -11,18 +11,19 @@ import {
   CheckCircle2, XCircle, AlertTriangle, Sparkles,
   Edit3, Check, X, RefreshCw, Play, ArrowLeft, ArrowRight,
   Users, Zap, Calendar, BookOpen, BarChart3,
-  ExternalLink, Search, Eye,
+  ExternalLink, Search, Eye, EyeOff, Trash2,
   Cpu, ChevronDown, DoorOpen, Mic, CalendarCheck,
   ClipboardList, History, FileText, Bell, Layers,
 } from "lucide-react";
 import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
-import { SiJira, SiSlack, SiNotion } from "react-icons/si";
+import { SiJira, SiSlack, SiNotion, SiZoom } from "react-icons/si";
 import { TbBrandTeams } from "react-icons/tb";
+import { useNotifications } from "@/lib/notifications";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type ActionStatus  = "pending" | "approved" | "rejected" | "executing" | "executed" | "failed";
 type ActionType    = "task" | "decision" | "risk" | "next_step" | "event" | "note";
-type Destination   = "jira" | "slack" | "notion" | "teams" | "meetbook";
+type Destination   = "jira" | "slack" | "notion" | "teams" | "meetbook" | "zoom" | "meetcalendar";
 type Priority      = "low" | "medium" | "high" | "critical";
 type SessionStatus = "processing" | "pending_review" | "approved" | "executed" | "partial" | "rejected";
 type WizardStep    = 0 | 1 | 2 | 3 | 4;
@@ -49,7 +50,7 @@ interface NearbyEvent { id: string; title: string; start_at: string; }
 interface HistoryEntry {
   id: string; title: string; destination: Destination;
   status: "success" | "failed"; external_url: string;
-  meeting_name: string; executed_at: string;
+  error_message: string | null; meeting_name: string; executed_at: string;
 }
 
 // ── Metadata ───────────────────────────────────────────────────────────────────
@@ -59,6 +60,8 @@ const DEST_META: Record<Destination, { label: string; Icon: React.ElementType; c
   notion:       { label: "Notion",       Icon: SiNotion,     color: "#191919", bg: "#F5F5F5" },
   teams:        { label: "Teams",        Icon: TbBrandTeams, color: "#5059C9", bg: "#EEEEFF" },
   meetbook:     { label: "MeetBook",     Icon: BookOpen,     color: "#7c3aed", bg: "#F3EEFF" },
+  zoom:         { label: "Zoom",         Icon: SiZoom,       color: "#2D8CFF", bg: "#EFF6FF" },
+  meetcalendar: { label: "Calendario",   Icon: Calendar,     color: "#059669", bg: "#ECFDF5" },
 };
 const TYPE_META: Record<ActionType, { label: string; color: string }> = {
   task:      { label: "Tarea",        color: "#050040" },
@@ -230,6 +233,7 @@ function SwipeReminderCard({ item, decision, onDecide }: {
 // ── Session selector (same visual style as ModeSelector) ──────────────────────
 function SessionSelector({
   sessions, loading, selectedId, mode, canProceed,
+  hiddenIds, onHide, onUnhide, onDelete,
   onSelect, onBack, onNext,
 }: {
   sessions: ApiSession[];
@@ -237,12 +241,21 @@ function SessionSelector({
   selectedId: string | null;
   mode: Mode;
   canProceed: boolean;
-  onSelect: (id: string) => void;
-  onBack:  () => void;
-  onNext:  () => void;
+  hiddenIds: Set<string>;
+  onHide:    (id: string) => void;
+  onUnhide:  (id: string) => void;
+  onDelete:  (id: string) => void;
+  onSelect:  (id: string) => void;
+  onBack:    () => void;
+  onNext:    () => void;
 }) {
-  const [showAll, setShowAll] = React.useState(false);
-  const visible = showAll ? sessions : sessions.slice(0, 4);
+  const [showAll,    setShowAll]    = React.useState(false);
+  const [showHidden, setShowHidden] = React.useState(false);
+  const [confirmDel, setConfirmDel] = React.useState<string | null>(null);
+
+  const visible     = (showAll ? sessions : sessions.slice(0, 4)).filter((s) => !hiddenIds.has(s.id));
+  const hiddenList  = sessions.filter((s) => hiddenIds.has(s.id));
+  const totalVisible = sessions.filter((s) => !hiddenIds.has(s.id));
 
   const question =
     mode === "summary"   ? "¿Qué reunión quieres resumir?"            :
@@ -290,82 +303,160 @@ function SessionSelector({
               {visible.map((s, idx) => {
                 const st  = STATUS_META[s.status];
                 const sel = s.id === selectedId;
+                const isConfirming = confirmDel === s.id;
                 return (
-                  <motion.button
+                  <motion.div
                     key={s.id}
-                    onClick={() => onSelect(s.id)}
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
-                    whileHover={{ scale: 1.02, y: -3, boxShadow: "0 8px 24px -4px rgba(0,0,0,0.10)" }}
-                    whileTap={{ scale: 0.98 }}
                     transition={{ delay: idx * 0.06, duration: 0.3 }}
-                    className={cn(
-                      "relative text-left p-6 rounded-2xl border-2 bg-white group transition-colors",
-                      sel ? "border-[#050040] shadow-md" : "border-slate-200 hover:border-slate-300",
-                    )}
+                    className="relative group"
                   >
-                    {/* Status badge */}
-                    <span className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full"
-                      style={{ backgroundColor: st.dot + "20", color: st.dot }}>
-                      {st.label}
-                    </span>
-
-                    {/* Icon */}
-                    <div className={cn(
-                      "w-12 h-12 rounded-xl flex items-center justify-center mb-4 text-2xl",
-                      sel ? "bg-[#050040]/10" : "bg-slate-100",
-                    )}>
-                      🎙️
+                    {/* Botones de acción — fuera del div-carta para evitar button-in-button */}
+                    <div className="absolute top-2.5 right-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                      <button
+                        onClick={() => { setConfirmDel(null); onHide(s.id); }}
+                        title="Ocultar reunión"
+                        className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50 hover:border-slate-300 shadow-sm transition-all"
+                      >
+                        <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+                      </button>
+                      {isConfirming ? (
+                        <button
+                          onClick={() => { setConfirmDel(null); onDelete(s.id); }}
+                          title="Confirmar eliminación"
+                          className="h-7 px-2 rounded-lg bg-red-500 text-white text-[10px] font-bold flex items-center gap-1 shadow-sm hover:bg-red-600 transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3" />¿Eliminar?
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDel(s.id)}
+                          title="Eliminar reunión"
+                          className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-red-50 hover:border-red-200 shadow-sm transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-slate-400" />
+                        </button>
+                      )}
                     </div>
 
-                    <h3 className={cn(
-                      "text-base font-bold leading-snug line-clamp-2 group-hover:text-[#050040] transition-colors",
-                      sel ? "text-[#050040]" : "text-slate-800",
-                    )}>
-                      {s.meeting_name}
-                    </h3>
-                    <p className="text-sm text-slate-400 mt-1.5">
-                      {s.meeting_date ? fmtDate(s.meeting_date) : "Sin fecha"}
-                      {s.duration_seconds ? ` · ${fmtDur(s.duration_seconds)}` : ""}
-                    </p>
+                    {/* Carta — motion.div con role="button" en lugar de motion.button */}
+                    <motion.div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onSelect(s.id)}
+                      onKeyDown={(e) => e.key === "Enter" && onSelect(s.id)}
+                      whileHover={{ scale: 1.02, y: -3, boxShadow: "0 8px 24px -4px rgba(0,0,0,0.10)" }}
+                      whileTap={{ scale: 0.98 }}
+                      className={cn(
+                        "cursor-pointer text-left p-6 rounded-2xl border-2 bg-white transition-colors select-none",
+                        sel ? "border-[#050040] shadow-md" : "border-slate-200 hover:border-slate-300",
+                      )}
+                    >
+                      <span
+                        className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full group-hover:opacity-0 transition-opacity"
+                        style={{ backgroundColor: st.dot + "20", color: st.dot }}
+                      >
+                        {st.label}
+                      </span>
 
-                    {/* Stats */}
-                    {(s.tasks_count > 0 || s.decisions_count > 0) && (
-                      <div className="flex gap-3 mt-3">
-                        {s.tasks_count > 0 && (
-                          <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                            {s.tasks_count} tareas
-                          </span>
-                        )}
-                        {s.decisions_count > 0 && (
-                          <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                            {s.decisions_count} decisiones
-                          </span>
-                        )}
+                      <div className={cn(
+                        "w-12 h-12 rounded-xl flex items-center justify-center mb-4 text-2xl",
+                        sel ? "bg-[#050040]/10" : "bg-slate-100",
+                      )}>
+                        🎙️
                       </div>
-                    )}
 
-                    {/* Selected indicator */}
-                    {sel && (
-                      <div className="absolute bottom-3 right-3 w-6 h-6 rounded-full bg-[#050040] flex items-center justify-center">
-                        <Check className="w-3.5 h-3.5 text-white" />
-                      </div>
-                    )}
-                  </motion.button>
+                      <h3 className={cn(
+                        "text-base font-bold leading-snug line-clamp-2 group-hover:text-[#050040] transition-colors",
+                        sel ? "text-[#050040]" : "text-slate-800",
+                      )}>
+                        {s.meeting_name}
+                      </h3>
+                      <p className="text-sm text-slate-400 mt-1.5">
+                        {s.meeting_date ? fmtDate(s.meeting_date) : "Sin fecha"}
+                        {s.duration_seconds ? ` · ${fmtDur(s.duration_seconds)}` : ""}
+                      </p>
+
+                      {(s.tasks_count > 0 || s.decisions_count > 0) && (
+                        <div className="flex gap-3 mt-3">
+                          {s.tasks_count > 0 && (
+                            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                              {s.tasks_count} tareas
+                            </span>
+                          )}
+                          {s.decisions_count > 0 && (
+                            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                              {s.decisions_count} decisiones
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {sel && (
+                        <div className="absolute bottom-3 right-3 w-6 h-6 rounded-full bg-[#050040] flex items-center justify-center">
+                          <Check className="w-3.5 h-3.5 text-white" />
+                        </div>
+                      )}
+                    </motion.div>
+                  </motion.div>
                 );
               })}
             </div>
 
             {/* Ver todas link */}
-            {sessions.length > 4 && !showAll && (
+            {totalVisible.length > 4 && !showAll && (
               <div className="text-center mt-4">
                 <button
                   onClick={() => setShowAll(true)}
                   className="text-sm text-slate-400 hover:text-[#050040] transition-colors inline-flex items-center gap-1.5 underline underline-offset-2"
                 >
-                  ver todas las reuniones ({sessions.length})
+                  ver todas las reuniones ({totalVisible.length})
                   <ChevronDown className="w-3.5 h-3.5" />
                 </button>
+              </div>
+            )}
+
+            {/* Reuniones ocultas */}
+            {hiddenList.length > 0 && (
+              <div className="mt-6">
+                <button
+                  onClick={() => setShowHidden((v) => !v)}
+                  className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-600 transition-colors mb-3"
+                >
+                  <Eye className="w-4 h-4" />
+                  {showHidden ? "Ocultar" : "Ver"} reuniones ocultas ({hiddenList.length})
+                  <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", showHidden && "rotate-180")} />
+                </button>
+                {showHidden && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {hiddenList.map((s) => (
+                      <div key={s.id} className="relative group flex items-center gap-3 p-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60">
+                        <span className="text-xl opacity-40">🎙️</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-400 truncate">{s.meeting_name}</p>
+                          <p className="text-xs text-slate-300 mt-0.5">{s.meeting_date ? fmtDate(s.meeting_date) : "Sin fecha"}</p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => onUnhide(s.id)}
+                            title="Hacer visible"
+                            className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-100 transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-slate-400" />
+                          </button>
+                          <button
+                            onClick={() => { setConfirmDel(null); onDelete(s.id); }}
+                            title="Eliminar"
+                            className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-red-50 hover:border-red-200 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-slate-400" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -542,6 +633,7 @@ function ActionCard({ item, onToggle, onEdit }: {
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 export default function MeetActionView({ workspaceId }: { workspaceId?: string }) {
+  const { addNotification } = useNotifications();
   const [mode,      setMode]      = React.useState<Mode | null>(null);
   const [step,      setStep]      = React.useState<WizardStep>(0);
   const [dir,       setDir]       = React.useState<"fwd" | "back">("fwd");
@@ -566,6 +658,19 @@ export default function MeetActionView({ workspaceId }: { workspaceId?: string }
   const [showHistory, setShowHistory] = React.useState(false);
   const [history,     setHistory]     = React.useState<HistoryEntry[]>([]);
 
+  const [hiddenIds, setHiddenIds] = React.useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("meetaction_hidden") ?? "[]")); } catch { return new Set(); }
+  });
+
+  const hideSession   = (id: string) => setHiddenIds((prev) => { const next = new Set(prev).add(id); localStorage.setItem("meetaction_hidden", JSON.stringify([...next])); return next; });
+  const unhideSession = (id: string) => setHiddenIds((prev) => { const next = new Set(prev); next.delete(id); localStorage.setItem("meetaction_hidden", JSON.stringify([...next])); return next; });
+  const deleteSession = async (id: string) => {
+    await fetch(`/api/meetaction/sessions/${id}`, { method: "DELETE" });
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    unhideSession(id);
+    if (selectedId === id) setSelectedId(null);
+  };
+
   const [loading,           setLoading]           = React.useState(true);
   const [itemsLoading,      setItemsLoading]      = React.useState(false);
   const [sessionReminders,  setSessionReminders]  = React.useState<SessionReminder[]>([]);
@@ -574,13 +679,11 @@ export default function MeetActionView({ workspaceId }: { workspaceId?: string }
   const [reminderDecisions, setReminderDecisions] = React.useState<Record<string, "accepted" | "skipped">>({});
 
   const session      = sessions.find((s) => s.id === selectedId) ?? null;
-  // Integration items = items that go to real integrations (exclude stale meetcalendar)
-  const integrationItems = items.filter((i) => (i.destination as string) !== "meetcalendar");
-  const approved     = integrationItems.filter((i) => i.status === "approved");
-  const rejected     = integrationItems.filter((i) => i.status === "rejected");
-  const pending      = integrationItems.filter((i) => i.status === "pending");
+  const approved     = items.filter((i) => i.status === "approved");
+  const rejected     = items.filter((i) => i.status === "rejected");
+  const pending      = items.filter((i) => i.status === "pending");
   const destinations = [...new Set(approved.map((i) => i.destination))];
-  const filtered     = integrationItems.filter((i) => {
+  const filtered     = items.filter((i) => {
     if (filterType !== "all" && i.type !== filterType) return false;
     if (search && !i.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -602,8 +705,8 @@ export default function MeetActionView({ workspaceId }: { workspaceId?: string }
     try {
       const r = await fetch("/api/meetaction/history?limit=100");
       const d = r.ok ? await r.json() : { history: [] };
-      type ApiLog = { id: string; title: string; destination: Destination; status: "success" | "failed"; external_url: string | null; executed_at: string; meet_action_sessions: { meeting_name: string } | null };
-      setHistory((d.history ?? []).map((h: ApiLog) => ({ id: h.id, title: h.title, destination: h.destination, status: h.status, external_url: h.external_url ?? "#", executed_at: h.executed_at, meeting_name: h.meet_action_sessions?.meeting_name ?? "Reunión" })));
+      type ApiLog = { id: string; title: string; destination: Destination; status: "success" | "failed"; external_url: string | null; error_message: string | null; executed_at: string; meet_action_sessions: { meeting_name: string } | null };
+      setHistory((d.history ?? []).map((h: ApiLog) => ({ id: h.id, title: h.title, destination: h.destination, status: h.status, external_url: h.external_url ?? "#", error_message: h.error_message ?? null, executed_at: h.executed_at, meeting_name: h.meet_action_sessions?.meeting_name ?? "Reunión" })));
     } catch { setHistory([]); }
   }, []);
 
@@ -707,10 +810,10 @@ export default function MeetActionView({ workspaceId }: { workspaceId?: string }
 
   async function handleExecute() {
     if (!selectedId || approved.length === 0) return;
-    const totalSteps = destinations.length + 3; setExecuting(true); setExecStep(0);
+    const totalSteps = destinations.length + 4; setExecuting(true); setExecStep(0);
     let s = 0; const tick = setInterval(() => { s = Math.min(s + 1, totalSteps - 1); setExecStep(s); }, 700);
     try {
-      // Save reminders accepted in the swipe step to /api/recordatorios
+      // Save accepted reminders and fire a bell notification for each
       const acceptedReminderItems = items.filter((i) => reminderDecisions[i.id] === "accepted");
       if (acceptedReminderItems.length > 0) {
         await Promise.all(
@@ -728,10 +831,20 @@ export default function MeetActionView({ workspaceId }: { workspaceId?: string }
             }),
           ),
         );
+        acceptedReminderItems.forEach((item) =>
+          addNotification({ title: "Recordatorio detectado", description: item.title, type: "assignment" })
+        );
       }
       await fetch(`/api/meetaction/sessions/${selectedId}/approve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approve: approved.map((i) => i.id), reject: rejected.map((i) => i.id) }) });
-      await fetch(`/api/meetaction/sessions/${selectedId}/execute`, { method: "POST" });
-    } catch { /* en historial */ } finally {
+      // 30-second client-side timeout so the progress screen never hangs forever
+      const ctrl = new AbortController();
+      const tid  = setTimeout(() => ctrl.abort(), 30_000);
+      try {
+        await fetch(`/api/meetaction/sessions/${selectedId}/execute`, { method: "POST", signal: ctrl.signal });
+      } finally {
+        clearTimeout(tid);
+      }
+    } catch { /* errors shown in history */ } finally {
       clearInterval(tick); setExecStep(totalSteps); setExecuting(false); setExecDone(true);
       setSessions((prev) => prev.map((x) => x.id === selectedId ? { ...x, status: "executed" } : x));
       loadHistory();
@@ -781,6 +894,10 @@ export default function MeetActionView({ workspaceId }: { workspaceId?: string }
         selectedId={selectedId}
         mode={mode}
         canProceed={selectedId !== null}
+        hiddenIds={hiddenIds}
+        onHide={hideSession}
+        onUnhide={unhideSession}
+        onDelete={deleteSession}
         onSelect={(id) => setSelectedId(id)}
         onBack={() => { setMode(null); setStep(0); setSelectedId(null); }}
         onNext={goNext}
@@ -818,7 +935,12 @@ export default function MeetActionView({ workspaceId }: { workspaceId?: string }
               {entries.map((e) => (
                 <div key={e.id} className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50 transition-colors group border-b border-slate-50 last:border-0">
                   {e.status === "success" ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <XCircle className="w-5 h-5 text-red-400" />}
-                  <div className="flex-1 min-w-0"><p className="text-sm font-medium text-slate-700 truncate">{e.title}</p></div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-700 truncate">{e.title}</p>
+                    {e.status === "failed" && e.error_message && (
+                      <p className="text-xs text-red-400 truncate mt-0.5">{e.error_message}</p>
+                    )}
+                  </div>
                   <DestBadge dest={e.destination} />
                   {e.external_url && e.status === "success" && (
                     <a href={e.external_url} target="_blank" rel="noopener noreferrer" className="p-2 rounded-xl hover:bg-slate-200 text-slate-400 opacity-0 group-hover:opacity-100 transition-all">
@@ -928,7 +1050,7 @@ export default function MeetActionView({ workspaceId }: { workspaceId?: string }
     }
 
     // ── Actions / Full mode: original progress screen ─────────────────────────
-    const totalSteps = destinations.length + 3;
+    const totalSteps = destinations.length + 4;
     return (
       <div className="flex h-full overflow-y-auto bg-slate-50">
         <div className="w-full flex items-center justify-center p-8">

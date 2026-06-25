@@ -36,6 +36,32 @@ export async function GET(
   return NextResponse.json({ session: data });
 }
 
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await auth();
+  if (!session?.user?.email) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  const userId = await resolveUserId(session.user.email);
+  if (!userId) return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
+
+  const { id } = await params;
+  const db = getSupabase();
+
+  // Verify ownership before deleting
+  const { data: existing } = await db
+    .from("meet_action_sessions").select("id").eq("id", id).eq("user_id", userId).single();
+  if (!existing) return NextResponse.json({ error: "Sesión no encontrada" }, { status: 404 });
+
+  // Delete child rows first (items + execution logs)
+  await db.from("meet_action_execution_log").delete().eq("session_id", id);
+  await db.from("meet_action_items").delete().eq("session_id", id);
+  await db.from("meet_action_executions").delete().eq("session_id", id);
+  await db.from("meet_action_sessions").delete().eq("id", id).eq("user_id", userId);
+
+  return NextResponse.json({ deleted: true });
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

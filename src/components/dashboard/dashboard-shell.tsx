@@ -1543,7 +1543,7 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
   async function handleConnect(id: string) {
     if (id === "jira")  { window.location.href = "/api/auth/jira"; return; }
     if (id === "gcal")  { window.location.href = "/api/auth/google-calendar"; return; }
-    if (id === "zoom")  { window.location.href = "/api/auth/zoom"; return; }
+    if (id === "zoom")  { window.location.href = "/api/integrations/zoom/connect"; return; }
     await toggle(id);
   }
 
@@ -1671,7 +1671,7 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
           {INTEGRATION_LIST.map(({ id, label, color, Icon, desc }) => {
             const isConn    = isOAuthConnected(id);
             const isLoading = saving === id;
-            const isOAuth   = OAUTH_INTEGRATIONS.has(id);
+            const isOAuth = OAUTH_INTEGRATIONS.has(id);
             return (
               <div key={id} className={cn(
                 "group bg-white rounded-2xl border p-5 flex flex-col gap-4 transition-all hover:shadow-md",
