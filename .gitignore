@@ -53,3 +53,8 @@ coverage/
 *.pem
 .vercel
 .turbo
+
+# Desktop build artifacts
+desktop/**/*.d.ts
+desktop/**/*.js
+desktop/**/*.jsx
