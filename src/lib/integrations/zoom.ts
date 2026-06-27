@@ -131,6 +131,12 @@ interface ZoomCredentials {
 }
 
 export async function saveZoomConnection(userId: string, token: ZoomTokenResponse): Promise<void> {
+  if (!token.access_token || !token.refresh_token) {
+    throw new Error(
+      `Zoom: respuesta de token incompleta${token.error ? ` (${token.error}: ${token.reason ?? ""})` : ""}`,
+    );
+  }
+
   const expiresAt = new Date(Date.now() + (token.expires_in ?? 3600) * 1000).toISOString();
   const credJson  = JSON.stringify({
     access_token:  token.access_token,

@@ -10,7 +10,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/../auth";
 import { getSupabase } from "@/lib/supabase";
 import { sendSlackMessage } from "@/lib/integrations/slack";
-import { createZoomMeeting as createZoomMeetingOAuth } from "@/lib/integrations/zoom";
 import { JiraService } from "@/lib/services/jira-service";
 import { NotionService, type NotionDatabase } from "@/lib/integrations/notion";
 
