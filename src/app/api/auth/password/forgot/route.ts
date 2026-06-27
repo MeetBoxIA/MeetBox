@@ -57,23 +57,23 @@ export async function POST(req: NextRequest) {
 
   const db = getSupabase();
 
-  // Gate by password_hash, not provider: an account that also linked Google
-  // can still reset its password as long as it has one. Google-only
-  // accounts (no password_hash) have nothing to reset.
+  // Any existing account can set/reset a password this way — including
+  // Google-only accounts with no password_hash yet, for whom this is really
+  // "set a password for the first time" so they gain email+password login too.
   const { data: user } = await db
     .from("users")
-    .select("id, password_hash")
+    .select("id")
     .eq("email", email)
     .maybeSingle();
 
-  // No user / no password → return the same generic 200 (anti-enumeration)
-  if (!user?.password_hash) return genericOk();
+  // No user → return the same generic 200 (anti-enumeration)
+  if (!user) return genericOk();
 
   const token    = randomBytes(32).toString("hex");
   const baseUrl  = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
   const resetUrl = `${baseUrl}/auth/reset?token=${token}&email=${encodeURIComponent(email)}`;
 
-  saveResetToken(email, token);
+  await saveResetToken(email, token);
 
   try {
     await sendEmail({

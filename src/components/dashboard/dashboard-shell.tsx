@@ -1451,7 +1451,10 @@ function DesktopTokenCard() {
 
 // ── Integrations view ─────────────────────────────────────────────────────────
 // IDs that have real OAuth flows (not just profile toggles)
-const OAUTH_INTEGRATIONS = new Set(["jira", "gcal", "zoom"]);
+const OAUTH_INTEGRATIONS = new Set(["jira", "gcal"]);
+// Zoom is configured account-wide via server env vars (Server-to-Server OAuth),
+// not per-user — there is no connect/disconnect action for it in this UI.
+const ACCOUNT_LEVEL_INTEGRATIONS = new Set(["zoom"]);
 
 function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (p: Partial<Profile>) => void }) {
   const { t } = useTranslation();
@@ -1516,19 +1519,6 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
       setToast({ msg: "¡Google Calendar conectado!", type: "success" });
       setGcalConnected(true);
     }
-    if (zoomStatus === "connected") {
-      setToast({ msg: "¡Zoom conectado exitosamente!", type: "success" });
-      setZoomConnected(true);
-      // Re-fetch zoom email after callback
-      fetch("/api/auth/zoom/status")
-        .then((r) => r.ok ? r.json() : { connected: false })
-        .then((d: { connected: boolean; zoom_email?: string }) => setZoomEmail(d.zoom_email ?? null))
-        .catch(() => {});
-    } else if (zoomStatus === "denied") {
-      setToast({ msg: "Autorización de Zoom denegada", type: "error" });
-    } else if (zoomStatus === "error") {
-      setToast({ msg: "Error al conectar Zoom", type: "error" });
-    }
     if (notionStatus === "connected") {
       setToast({ msg: "¡Notion conectado exitosamente!", type: "success" });
       setNotionConnected(true);
@@ -1569,8 +1559,8 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
   async function handleConnect(id: string) {
     if (id === "jira")   { window.location.href = "/api/auth/jira"; return; }
     if (id === "gcal")   { window.location.href = "/api/auth/google-calendar"; return; }
-    if (id === "zoom")   { window.location.href = "/api/integrations/zoom/connect"; return; }
     if (id === "notion") { window.location.href = "/api/auth/notion"; return; }
+    if (ACCOUNT_LEVEL_INTEGRATIONS.has(id)) return; // No per-user action — configured server-side.
     await toggle(id);
   }
 
@@ -1583,14 +1573,7 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
       setToast({ msg: "Jira desconectado", type: "info" });
       return;
     }
-    if (id === "zoom") {
-      setSaving(id);
-      await fetch("/api/auth/zoom/status", { method: "DELETE" });
-      setZoomConnected(false); setZoomEmail(null);
-      setSaving(null);
-      setToast({ msg: "Zoom desconectado", type: "info" });
-      return;
-    }
+    if (ACCOUNT_LEVEL_INTEGRATIONS.has(id)) return; // No per-user action — configured server-side.
     if (id === "notion") {
       setSaving(id);
       await fetch("/api/auth/notion/status", { method: "DELETE" });
@@ -1704,9 +1687,10 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {INTEGRATION_LIST.map(({ id, label, color, Icon, desc }) => {
-            const isConn    = isOAuthConnected(id);
-            const isLoading = saving === id;
-            const isOAuth = OAUTH_INTEGRATIONS.has(id);
+            const isConn       = isOAuthConnected(id);
+            const isLoading    = saving === id;
+            const isOAuth      = OAUTH_INTEGRATIONS.has(id);
+            const isAccountLvl = ACCOUNT_LEVEL_INTEGRATIONS.has(id);
             return (
               <div key={id} className={cn(
                 "group bg-white rounded-2xl border p-5 flex flex-col gap-4 transition-all hover:shadow-md",
@@ -1752,21 +1736,33 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
                   )}
                 </div>
                 {/* Action */}
-                <button
-                  onClick={() => isConn ? handleDisconnect(id) : handleConnect(id)}
-                  disabled={isLoading}
-                  className={cn(
-                    "w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all disabled:opacity-50",
+                {isAccountLvl ? (
+                  <div className={cn(
+                    "w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border",
                     isConn
-                      ? "bg-red-50 text-red-600 hover:bg-red-100 border border-red-100"
-                      : "bg-[#050040] text-white hover:bg-[#050040]/90",
-                  )}
-                >
-                  {isLoading ? "…" : isConn
-                    ? <><Zap className="w-3.5 h-3.5" />{t("disconnect")}</>
-                    : <><Link2 className="w-3.5 h-3.5" />{isOAuth ? `${t("connect")} ${label}` : t("connect")}</>
-                  }
-                </button>
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                      : "bg-slate-50 text-slate-400 border-slate-100",
+                  )}>
+                    {isConn ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Zap className="w-3.5 h-3.5" />}
+                    {isConn ? "Configurado para todo el equipo" : "No configurado (faltan variables de entorno)"}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => isConn ? handleDisconnect(id) : handleConnect(id)}
+                    disabled={isLoading}
+                    className={cn(
+                      "w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all disabled:opacity-50",
+                      isConn
+                        ? "bg-red-50 text-red-600 hover:bg-red-100 border border-red-100"
+                        : "bg-[#050040] text-white hover:bg-[#050040]/90",
+                    )}
+                  >
+                    {isLoading ? "…" : isConn
+                      ? <><Zap className="w-3.5 h-3.5" />{t("disconnect")}</>
+                      : <><Link2 className="w-3.5 h-3.5" />{isOAuth ? `${t("connect")} ${label}` : t("connect")}</>
+                    }
+                  </button>
+                )}
               </div>
             );
           })}

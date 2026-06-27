@@ -53,6 +53,18 @@ export default function PublicCalendarPage() {
       .finally(() => setLoading(false));
   }, [token, currentMonth]);
 
+  // Hooks must run on every render regardless of `notFound`, so this stays
+  // above the early return below (React errors if hook order changes between renders).
+  const eventsByDate = React.useMemo(() => {
+    const map = new Map<string, CalEvent[]>();
+    for (const ev of events) {
+      const key = isoDate(new Date(ev.start_at));
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(ev);
+    }
+    return map;
+  }, [events]);
+
   if (notFound) return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="text-center max-w-sm">
@@ -75,16 +87,6 @@ export default function PublicCalendarPage() {
     i < firstDay ? null : i - firstDay + 1,
   );
   while (cells.length % 7 !== 0) cells.push(null);
-
-  const eventsByDate = React.useMemo(() => {
-    const map = new Map<string, CalEvent[]>();
-    for (const ev of events) {
-      const key = isoDate(new Date(ev.start_at));
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(ev);
-    }
-    return map;
-  }, [events]);
 
   const selectedEvents = selectedDay ? (eventsByDate.get(isoDate(selectedDay)) ?? []) : [];
 

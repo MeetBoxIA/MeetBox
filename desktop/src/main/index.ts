@@ -263,6 +263,15 @@ function registerIpcHandlers(): void {
     shell.openExternal(url)
   })
 
+  // "Revisar acciones en el dashboard" — the dashboard already lives in the
+  // user's browser (Electron can't reuse its tabs), so opening a new window
+  // here can land on a different browser/profile and force a re-login.
+  // Minimizing instead reveals whatever dashboard window the user already
+  // has open behind the recorder, with zero new windows and no login prompt.
+  ipcMain.on('focus-dashboard', () => {
+    mainWindow?.minimize()
+  })
+
   // Import an existing audio/video recording.
   // If filePath is provided, uploads that file directly (e.g. after saving a new
   // recording). Otherwise opens a file picker to let the user choose any file.

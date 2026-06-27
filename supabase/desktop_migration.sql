@@ -1,6 +1,8 @@
--- ── Desktop tokens ─────────────────────────────────────────────────────────────
--- Cada usuario puede tener un token activo para conectar MeetBox Desktop.
--- El token tiene formato MBOX-XXXXXXXX (8 hex chars uppercase).
+-- ── Desktop tokens (DEPRECATED) ──────────────────────────────────────────────
+-- Superseded by `desktop_sessions` in desktop_pipeline_migration.sql, which is
+-- what src/lib/desktop-auth.ts actually reads/writes today. Nothing in the
+-- codebase queries `desktop_tokens` anymore. Kept only for installs that
+-- already ran this file — do not run on new installs.
 
 CREATE TABLE IF NOT EXISTS desktop_tokens (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),

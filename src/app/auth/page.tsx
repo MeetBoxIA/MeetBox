@@ -1,6 +1,14 @@
 import AuthTabsCard from "@/components/ui/auth-tabs-card";
 
-export default function AuthPage() {
+export default async function AuthPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const callbackUrlRaw = sp.callbackUrl;
+  const callbackUrl = typeof callbackUrlRaw === "string" ? callbackUrlRaw : undefined;
+
   return (
     <main className="min-h-screen flex">
       {/* ── Left brand panel (desktop) ── */}
@@ -50,7 +58,7 @@ export default function AuthPage() {
             <span className="text-xl font-semibold tracking-tight text-[#050040]">MeetBox</span>
           </div>
 
-          <AuthTabsCard defaultTab="sign-up" />
+          <AuthTabsCard defaultTab="sign-up" callbackUrl={callbackUrl} />
 
           <p className="mt-6 text-center text-xs text-slate-400">
             Al continuar aceptas los{" "}

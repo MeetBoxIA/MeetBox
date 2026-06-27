@@ -9,9 +9,10 @@ import { Loader2, ArrowLeft, CheckCircle2 } from "lucide-react";
 
 interface AuthTabsCardProps {
   defaultTab?: "sign-in" | "sign-up";
+  callbackUrl?: string;
 }
 
-export default function AuthTabsCard({ defaultTab = "sign-in" }: AuthTabsCardProps) {
+export default function AuthTabsCard({ defaultTab = "sign-in", callbackUrl }: AuthTabsCardProps) {
   const [activeTab, setActiveTab] = React.useState<"sign-in" | "sign-up">(defaultTab);
   const [otpOpen, setOtpOpen] = React.useState(false);
   const [pendingEmail, setPendingEmail] = React.useState("");
@@ -42,7 +43,10 @@ export default function AuthTabsCard({ defaultTab = "sign-in" }: AuthTabsCardPro
   async function handleOAuth(provider: "google") {
     setLoading(provider);
     setError("");
-    await signIn(provider, { callbackUrl: "/auth/verify" });
+    const verifyUrl = callbackUrl
+      ? `/auth/verify?callbackUrl=${encodeURIComponent(callbackUrl)}`
+      : "/auth/verify";
+    await signIn(provider, { callbackUrl: verifyUrl });
   }
 
   async function handleSignIn(e: React.FormEvent) {
@@ -58,7 +62,7 @@ export default function AuthTabsCard({ defaultTab = "sign-in" }: AuthTabsCardPro
     if (res?.error) {
       setError("Email o contraseña incorrectos.");
     } else {
-      window.location.href = "/dashboard";
+      window.location.href = callbackUrl ?? "/dashboard";
     }
   }
 

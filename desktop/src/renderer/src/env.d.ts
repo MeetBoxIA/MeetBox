@@ -10,6 +10,7 @@ declare global {
       minimizeWindow:         () => void
       closeWindow:            () => void
       openDashboard:          (sessionId?: string) => void
+      focusDashboard:         () => void
       importRecording:        (filePath?: string) => Promise<{ ok: boolean; jobId?: string; error?: string }>
       getAutoLaunch:          () => Promise<boolean>
       setAutoLaunch:          (enabled: boolean) => Promise<boolean>

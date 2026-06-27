@@ -206,25 +206,28 @@ All SQL files live in `supabase/` and are idempotent (`CREATE TABLE IF NOT EXIST
 
 ```
 1. schema.sql                          — users table
-2. meetcalendar_migration.sql          — calendar_events
-3. meetings_migration.sql              — meeting_recordings
-4. meety_chat_migration.sql            — chat_conversations + chat_messages
-5. recurrence_migration.sql            — recurring event columns
-6. rooms_migration.sql                 — rooms + room_members
-7. workspace_roles_migration.sql       — workspace/role scoping
-8. workspace_scope_migration.sql       — workspace-scoped data access
-9. desktop_migration.sql               — legacy desktop_tokens (superseded by desktop_pipeline_migration.sql)
+2. user_profiles_migration.sql         — onboarding data + integrations badge list (required by /dashboard)
+3. meetcalendar_migration.sql          — calendar_events
+4. meetings_migration.sql              — meeting_recordings
+5. meety_chat_migration.sql            — chat_conversations + chat_messages
+6. recurrence_migration.sql            — recurring event columns
+7. rooms_migration.sql                 — rooms + room_members
+8. workspace_roles_migration.sql       — workspace/role scoping
+9. workspace_scope_migration.sql       — workspace-scoped data access
 10. desktop_pipeline_migration.sql     — desktop_sessions + recording → transcript → analysis pipeline
 11. meetaction_migration.sql           — meet_action_sessions/items/executions/execution_log
 12. rooms_meetaction_migration.sql     — links MeetAction sessions to rooms
 13. recordatorios_migration.sql        — reminders
-14. zoom_migration.sql                 — Zoom OAuth columns
-15. jira_migration.sql                 — Jira OAuth columns
-16. notion_migration.sql               — Notion OAuth columns
-17. notion_default_database_migration.sql — auto-provisioned Notion database id
+14. jira_migration.sql                 — Jira OAuth columns
+15. notion_migration.sql               — Notion OAuth columns
+16. notion_default_database_migration.sql — auto-provisioned Notion database id
+17. password_reset_tokens_migration.sql — persists password-reset tokens (required by /api/auth/password/forgot and /reset)
+18. otp_codes_migration.sql             — persists email-verification OTP codes (required by /api/auth/otp/send and /verify)
 ```
 
 `_COMBINED_meetaction_setup.sql` bundles several of the MeetAction-related migrations for a faster one-shot setup; prefer the individual files above unless you know you want the combined version. `cleanup_old_calendar_events.sql` is a maintenance script, not part of the initial setup.
+
+**Deprecated — do not run on new installs:** `zoom_migration.sql` (Zoom moved to Server-to-Server OAuth configured via env vars, not per-user columns) and `desktop_migration.sql` (superseded by `desktop_pipeline_migration.sql`'s `desktop_sessions` table). Both are kept only for installs that already ran them.
 
 ### Installation & Development
 

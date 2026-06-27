@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
 
   const code = generateCode();
   // Save before attempting to send so the code is valid even if send fails
-  saveOTP(email, code);
+  await saveOTP(email, code);
 
   // Dev convenience: always print the code in the terminal, in addition to
   // sending it by email, so testing doesn't require checking an inbox.

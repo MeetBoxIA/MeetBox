@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { email, code } = result.data;
-  const otp = checkOTP(email, code);
+  const otp = await checkOTP(email, code);
 
   if (!otp.valid) {
     const locked = otp.reason === "locked";

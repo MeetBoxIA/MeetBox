@@ -429,7 +429,7 @@ export default function App() {
           progress={jobProgress}
           stage={jobStage}
           hasSession={!!jobSessionId}
-          onOpenDashboard={() => window.electronAPI.openDashboard(jobSessionId ?? undefined)}
+          onOpenDashboard={() => window.electronAPI.focusDashboard()}
           onDismiss={() => { setUploadState('idle'); setJobStage('') }}
         />
       )}

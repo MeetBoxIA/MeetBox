@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   const { email, token, password } = result.data;
   const normalizedEmail = email.toLowerCase().trim();
 
-  const check = checkResetToken(normalizedEmail, token);
+  const check = await checkResetToken(normalizedEmail, token);
 
   if (!check.valid) {
     const messages: Record<string, string> = {
@@ -44,15 +44,15 @@ export async function POST(req: NextRequest) {
 
   const db = getSupabase();
 
-  // Gate by password_hash, not provider: an account that also linked Google
-  // can still reset its password as long as it has one set.
+  // Any existing account can set a password here — including Google-only
+  // accounts with no password_hash yet (this is their first password).
   const { data: user } = await db
     .from("users")
-    .select("id, password_hash")
+    .select("id")
     .eq("email", normalizedEmail)
     .maybeSingle();
 
-  if (!user?.password_hash) {
+  if (!user) {
     return NextResponse.json({ error: "Cuenta no encontrada." }, { status: 404 });
   }
 
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Invalidate the token so it cannot be reused.
-  consumeResetToken(normalizedEmail);
+  await consumeResetToken(normalizedEmail);
 
   return NextResponse.json({ success: true });
 }

@@ -56,5 +56,6 @@ coverage/
 
 # Desktop build artifacts
 desktop/**/*.d.ts
+!desktop/src/renderer/src/env.d.ts
 desktop/**/*.js
 desktop/**/*.jsx

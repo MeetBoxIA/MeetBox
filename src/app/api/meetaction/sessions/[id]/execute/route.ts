@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/../auth";
 import { getSupabase } from "@/lib/supabase";
 import { sendSlackMessage } from "@/lib/integrations/slack";
+import { createZoomMeeting } from "@/lib/integrations/zoom";
 import { JiraService } from "@/lib/services/jira-service";
 import { NotionService, type NotionDatabase } from "@/lib/integrations/notion";
 
@@ -34,90 +35,6 @@ function slackText(item: Record<string, unknown>): string {
   if (item.assignee_name) lines.push(`👤 Responsable: ${item.assignee_name}`);
   if (item.priority)      lines.push(`Prioridad: ${item.priority}`);
   return lines.join("\n");
-}
-
-/** Get a Zoom access token using Server-to-Server OAuth (account_credentials grant). */
-async function getZoomAccessToken(): Promise<string> {
-  const accountId    = process.env.ZOOM_ACCOUNT_ID?.trim();
-  const clientId     = process.env.ZOOM_CLIENT_ID?.trim();
-  const clientSecret = process.env.ZOOM_CLIENT_SECRET?.trim();
-
-  if (!accountId || !clientId || !clientSecret) {
-    throw new Error("Zoom: faltan variables de entorno (ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET)");
-  }
-
-  const res = await fetch(
-    `https://zoom.us/oauth/token?grant_type=account_credentials&account_id=${accountId}`,
-    {
-      method: "POST",
-      headers: {
-        "Authorization": "Basic " + Buffer.from(`${clientId}:${clientSecret}`).toString("base64"),
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-    },
-  );
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(`Zoom token error: ${err.message ?? res.statusText}`);
-  }
-
-  const data = await res.json() as { access_token: string };
-  return data.access_token;
-}
-
-/** Resolve the Zoom account owner's userId from ZOOM_USER_EMAIL env var. */
-function getZoomUserId(): string {
-  const email = process.env.ZOOM_USER_EMAIL?.trim();
-  if (!email) throw new Error("Zoom: falta variable de entorno ZOOM_USER_EMAIL (email del dueño de la cuenta Zoom)");
-  return email;
-}
-
-/** Create a Zoom meeting using Server-to-Server OAuth (no per-user token required). */
-async function createZoomMeeting(
-  _userId: string,
-  item: Record<string, unknown>,
-  meetingName?: string | null,
-): Promise<{ ok: boolean; meetingId?: string; joinUrl?: string; error?: string }> {
-  let accessToken: string;
-  try {
-    accessToken = await getZoomAccessToken();
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-
-  let zoomUserId: string;
-  try {
-    zoomUserId = getZoomUserId();
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-
-  const topic   = meetingName ?? String(item.title ?? "Reunión de MeetBox");
-  const agenda  = String(item.title ?? "") + (item.description ? `\n\n${item.description}` : "");
-
-  const res = await fetch(`https://api.zoom.us/v2/users/${zoomUserId}/meetings`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      topic,
-      type:     2,
-      duration: 60,
-      agenda,
-      settings: { join_before_host: true, waiting_room: false },
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string; code?: number };
-    return { ok: false, error: `Zoom API ${res.status}: ${err.message ?? res.statusText}` };
-  }
-
-  const data = await res.json() as { id: number; join_url: string };
-  return { ok: true, meetingId: String(data.id), joinUrl: data.join_url };
 }
 
 /** Notion's built-in "People" collection rejects all page creation via the API. */
@@ -200,7 +117,7 @@ async function dispatchItem(
       return { ok: true, external_id: created.result.key, external_url: created.result.url };
     }
     case "zoom": {
-      const result = await createZoomMeeting(userId, item, meetingName);
+      const result = await createZoomMeeting(item, meetingName);
       if (!result.ok) return { ok: false, error: result.error };
       // Also create a calendar event linked to the workspace so it appears in the Rooms timeline
       await createCalendarEvent(userId, roomId, item, result.joinUrl);

@@ -41,6 +41,10 @@ const api = {
   // ── Dashboard web ───────────────────────────────────────────────────────────
   openDashboard: (sessionId?: string) => ipcRenderer.send('open-dashboard', sessionId),
 
+  // Minimizes the recorder window to reveal the dashboard the user already
+  // has open in their browser, instead of opening a new window/tab.
+  focusDashboard: () => ipcRenderer.send('focus-dashboard'),
+
   // ── Importar grabación existente ─────────────────────────────────────────────
   // Pass a filePath to skip the file picker (e.g. after saving a new recording).
   importRecording: (filePath?: string): Promise<{ ok: boolean; jobId?: string; error?: string }> =>

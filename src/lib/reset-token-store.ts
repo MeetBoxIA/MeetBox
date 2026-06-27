@@ -1,31 +1,25 @@
 /**
- * In-process store for password-reset tokens.
- * Mirrors the pattern of otp-store.ts.
- * Each token is 64 hex chars (32 random bytes), stored as-is (the API
- * only exposes a signed URL — the token itself is never shown in HTML).
+ * Persistent store for password-reset tokens, backed by Supabase.
+ *
+ * Previously an in-process Map — but on serverless deployments the request
+ * that saves the token and the request that validates it can land on
+ * different instances, making valid links randomly fail. Persisting in the
+ * `password_reset_tokens` table (see supabase/password_reset_tokens_migration.sql)
+ * fixes this while keeping the exact same function signatures as before.
  */
-
-interface ResetEntry {
-  token: string;
-  expiresAt: number;
-  used: boolean;
-}
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __resetTokenStore: Map<string, ResetEntry> | undefined;
-}
-
-// Survive Next.js hot reloads in development.
-const store: Map<string, ResetEntry> =
-  globalThis.__resetTokenStore ??
-  (globalThis.__resetTokenStore = new Map());
+import { getSupabase } from "./supabase";
 
 const TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 /** Save a reset token for the given email (overwrites any previous token). */
-export function saveResetToken(email: string, token: string): void {
-  store.set(email.toLowerCase(), { token, expiresAt: Date.now() + TTL_MS, used: false });
+export async function saveResetToken(email: string, token: string): Promise<void> {
+  const db = getSupabase();
+  await db.from("password_reset_tokens").upsert({
+    email: email.toLowerCase(),
+    token,
+    expires_at: new Date(Date.now() + TTL_MS).toISOString(),
+    used: false,
+  });
 }
 
 export type TokenCheckResult =
@@ -33,22 +27,23 @@ export type TokenCheckResult =
   | { valid: false; reason: "missing" | "expired" | "used" | "invalid" };
 
 /** Validate a reset token. Does NOT consume it — call consumeResetToken on success. */
-export function checkResetToken(email: string, token: string): TokenCheckResult {
-  const key   = email.toLowerCase();
-  const entry = store.get(key);
-  if (!entry)              return { valid: false, reason: "missing"  };
-  if (entry.used)          return { valid: false, reason: "used"     };
-  if (Date.now() > entry.expiresAt) {
-    store.delete(key);
-    return { valid: false, reason: "expired" };
-  }
+export async function checkResetToken(email: string, token: string): Promise<TokenCheckResult> {
+  const db = getSupabase();
+  const { data: entry } = await db
+    .from("password_reset_tokens")
+    .select("token, expires_at, used")
+    .eq("email", email.toLowerCase())
+    .maybeSingle();
+
+  if (!entry) return { valid: false, reason: "missing" };
+  if (entry.used) return { valid: false, reason: "used" };
+  if (new Date(entry.expires_at).getTime() < Date.now()) return { valid: false, reason: "expired" };
   if (entry.token !== token) return { valid: false, reason: "invalid" };
   return { valid: true };
 }
 
 /** Mark the token as used so it cannot be replayed. */
-export function consumeResetToken(email: string): void {
-  const key   = email.toLowerCase();
-  const entry = store.get(key);
-  if (entry) store.delete(key);
+export async function consumeResetToken(email: string): Promise<void> {
+  const db = getSupabase();
+  await db.from("password_reset_tokens").delete().eq("email", email.toLowerCase());
 }

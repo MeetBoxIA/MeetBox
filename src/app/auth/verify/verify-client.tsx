@@ -6,7 +6,7 @@ import { OTPInput, SlotProps } from "input-otp";
 import { Loader2, ShieldCheck, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export default function VerifyClient({ email }: { email: string }) {
+export default function VerifyClient({ email, callbackUrl }: { email: string; callbackUrl?: string }) {
   const router = useRouter();
   const [value, setValue] = React.useState("");
   const [status, setStatus] = React.useState<"sending" | "idle" | "loading" | "send-error" | "verify-error" | "success">("sending");
@@ -68,7 +68,7 @@ export default function VerifyClient({ email }: { email: string }) {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setStatus("success");
-        setTimeout(() => router.push("/dashboard"), 900);
+        setTimeout(() => router.push(callbackUrl ?? "/dashboard"), 900);
       } else {
         const isLocked = Boolean(data.locked);
         setLocked(isLocked);

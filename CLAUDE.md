@@ -93,16 +93,13 @@ npm run package:linux    # Package for Linux (.AppImage, .deb)
 
 ## Database Schema & Migrations
 
-Run all SQL files in `/supabase/` in this order in your Supabase SQL Editor:
-
-1. `schema.sql` — users table + auth setup
-2. `meetcalendar_migration.sql` — calendar_events (with recurrence)
-3. `meetings_migration.sql` — meeting_recordings
-4. `meety_chat_migration.sql` — chat_conversations + chat_messages
-5. `recurrence_migration.sql` — recurring event columns
-6. `rooms_migration.sql` — rooms + room_members
-7. `desktop_migration.sql` — desktop_tokens (MBOX token management)
-8. Additional integrations migrations (notion_migration.sql, etc.)
+Run all SQL files in `/supabase/` in your Supabase SQL Editor. See the full, current
+order in [README.md](README.md#database-setup) — `password_reset_tokens_migration.sql`
+and `otp_codes_migration.sql` are required for `/api/auth/password/*` and
+`/api/auth/otp/*` to work in production (they persist reset tokens and OTP codes in
+Supabase instead of in-process memory, which doesn't survive across serverless
+instances). `zoom_migration.sql` and `desktop_migration.sql` are deprecated — do not
+run them on new installs.
 
 All tables use **Row Level Security (RLS)** with service-role-only policies. All queries from Next.js use the Supabase service role key (`SUPABASE_SERVICE_ROLE_KEY`).
 

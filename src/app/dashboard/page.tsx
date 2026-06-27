@@ -4,9 +4,25 @@ import { getSupabase } from "@/lib/supabase";
 import OnboardingCoordinator from "@/components/ui/onboarding-coordinator";
 import DashboardShell from "@/components/dashboard/dashboard-shell";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = await auth();
-  if (!session) redirect("/auth");
+
+  // If unauthenticated, preserve the deep-link (e.g. ?section=meetaction&session=…)
+  // through login so the user lands exactly where they intended instead of home.
+  if (!session) {
+    const sp = await searchParams;
+    const qs = new URLSearchParams();
+    for (const key of ["section", "session"]) {
+      const v = sp[key];
+      if (typeof v === "string") qs.set(key, v);
+    }
+    const target = qs.toString() ? `/dashboard?${qs.toString()}` : "/dashboard";
+    redirect(`/auth?callbackUrl=${encodeURIComponent(target)}`);
+  }
 
   const { data: dbUser } = await getSupabase()
     .from("users")
