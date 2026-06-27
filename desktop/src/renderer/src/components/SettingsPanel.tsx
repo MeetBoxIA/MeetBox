@@ -2,11 +2,10 @@ import React, { useEffect, useState } from 'react'
 import { Monitor, LogIn, RefreshCw, LogOut } from 'lucide-react'
 
 interface SettingsPanelProps {
-  onBack:       () => void
   onDisconnect?: () => void
 }
 
-export default function SettingsPanel({ onBack, onDisconnect }: SettingsPanelProps) {
+export default function SettingsPanel({ onDisconnect }: SettingsPanelProps) {
   const [autoLaunch,    setAutoLaunch]    = useState(false)
   const [loading,       setLoading]       = useState(true)
   const [saving,        setSaving]        = useState(false)

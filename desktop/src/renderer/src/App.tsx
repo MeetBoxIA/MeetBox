@@ -437,7 +437,6 @@ export default function App() {
       {/* Vistas */}
       {view === 'settings' ? (
         <SettingsPanel
-          onBack={() => setView('home')}
           onDisconnect={() => setConnection(null)}
         />
       ) : (
