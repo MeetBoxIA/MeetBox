@@ -39,7 +39,12 @@ const api = {
   closeWindow:    () => ipcRenderer.send('window-close'),
 
   // ── Dashboard web ───────────────────────────────────────────────────────────
-  openDashboard: () => ipcRenderer.send('open-dashboard'),
+  openDashboard: (sessionId?: string) => ipcRenderer.send('open-dashboard', sessionId),
+
+  // ── Importar grabación existente ─────────────────────────────────────────────
+  // Pass a filePath to skip the file picker (e.g. after saving a new recording).
+  importRecording: (filePath?: string): Promise<{ ok: boolean; jobId?: string; error?: string }> =>
+    ipcRenderer.invoke('import-recording', filePath),
 
   // ── Auto-launch ─────────────────────────────────────────────────────────────
   getAutoLaunch: (): Promise<boolean>         => ipcRenderer.invoke('get-auto-launch'),

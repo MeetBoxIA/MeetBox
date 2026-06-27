@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { saveOTP } from "@/lib/otp-store";
 import { sendEmail } from "@/lib/email";
 import { OtpSendSchema } from "@/lib/validators";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /** Generate a 4-digit code in the range [1000, 9999]. */
 function generateCode() {
@@ -45,21 +46,33 @@ export async function POST(req: NextRequest) {
   }
   const { email } = result.data;
 
+  if (!checkRateLimit(`otp:${email.toLowerCase()}`, 3, 15 * 60 * 1000)) {
+    return NextResponse.json(
+      { error: "Demasiados intentos. Espera unos minutos antes de volver a intentarlo." },
+      { status: 429 },
+    );
+  }
+
   const code = generateCode();
   // Save before attempting to send so the code is valid even if send fails
   saveOTP(email, code);
+
+  // Dev convenience: always print the code in the terminal, in addition to
+  // sending it by email, so testing doesn't require checking an inbox.
+  if (process.env.NODE_ENV !== "production") {
+    console.log("\n┌─────────────────────────────────────┐");
+    console.log(`│  OTP for ${email}`);
+    console.log(`│  Code: ${code}`);
+    console.log("└─────────────────────────────────────┘\n");
+  }
 
   // Detect whether any provider is configured
   const hasBrevo  = !!process.env.BREVO_API_KEY;
   const hasResend = !!(process.env.RESEND_API_KEY && process.env.RESEND_FROM);
   const hasSmtp   = !!process.env.SMTP_HOST;
 
-  // No provider in env → dev mode, print to terminal instead of blocking registration
+  // No provider in env → dev mode; code was already printed above.
   if (!hasBrevo && !hasResend && !hasSmtp) {
-    console.log("\n┌─────────────────────────────────────┐");
-    console.log(`│  OTP for ${email}`);
-    console.log(`│  Code: ${code}`);
-    console.log("└─────────────────────────────────────┘\n");
     return NextResponse.json({ success: true, dev: true });
   }
 
@@ -71,12 +84,18 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("Error sending OTP:", msg);
-    // Fallback dev path: send failures shouldn't block registration — log and proceed
-    console.log("\n┌─────────────────────────────────────┐");
-    console.log(`│  [FALLBACK DEV] OTP for ${email}`);
-    console.log(`│  Code: ${code}`);
-    console.log("└─────────────────────────────────────┘\n");
+    console.error("Error sending OTP email:", msg);
+
+    // In production, expose the failure so misconfiguration is visible.
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        { error: "No se pudo enviar el correo. Contacta al administrador." },
+        { status: 500 },
+      );
+    }
+
+    // Dev fallback: the code was already printed to the terminal above,
+    // so the registration flow isn't blocked by a transient send error.
     return NextResponse.json({ success: true, dev: true });
   }
 

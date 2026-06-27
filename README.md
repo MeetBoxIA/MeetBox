@@ -4,16 +4,17 @@
 
 ## Overview
 
-MeetBox is a full-stack meeting management platform built for teams that want to organise, record and summarise their meetings without friction. It combines a rich web dashboard with an AI assistant (Meety), a native desktop companion app for audio capture, and deep integrations with the tools your team already uses.
+MeetBox is a full-stack meeting management platform built for teams that want to organise, record, summarise and act on their meetings without friction. It combines a rich web dashboard with an AI assistant (Meety), a native desktop companion app for audio capture, an AI-driven action pipeline (MeetAction) that turns recordings into approved tasks, and deep integrations with the tools your team already uses.
 
-**Key value proposition:** One platform for scheduling, note-taking, room management, and AI-powered meeting intelligence — accessible from a browser or a native desktop app.
+**Key value proposition:** One platform for scheduling, note-taking, room management, AI-powered meeting intelligence, and automatic execution of meeting outcomes (Jira issues, Notion pages, Slack messages, calendar events) — accessible from a browser or a native desktop app.
 
 ```
 ┌─────────────────────────────────────────┐
 │          MeetBox — Web Dashboard         │
-│  Calendar · Notes · Rooms · AI · Meetings│
+│ Calendar · Notes · Rooms · MeetAction ·  │
+│        Meety AI · Integrations           │
 └───────────────────┬─────────────────────┘
-                    │  MBOX token
+                    │  MBOX desktop session token
           ┌─────────▼──────────┐
           │ MeetBox Desktop App │
           │  (Electron + Vite)  │
@@ -33,12 +34,12 @@ MeetBox is a full-stack meeting management platform built for teams that want to
 | **Home Dashboard** | Personalised greeting, next-meeting focus card, quick-access gateways to every module |
 | **MeetCalendar** | Full calendar (month/week/day views), event CRUD, recurring events, Google Calendar sync, iCal sharing, email reminders |
 | **MeetBook** | Block-based note editor, organised in notebooks, pinned notes, soft-delete with trash |
-| **Rooms** | Team spaces with member management; rooms can host meetings and appear in the calendar |
-| **Meetings** | Today's meeting timeline, recording import, full history, per-meeting detail view |
-| **Meety AI** | Conversational AI assistant powered by GPT-4o-mini with full tool-calling access to your calendar, rooms, notes and recordings; falls back to keyword responses if no API key is configured |
-| **Integrations** | Connect Slack, Microsoft Teams, Google Calendar, Jira, Notion, Zoom; custom integrations; MeetBox Desktop connection via MBOX token |
+| **Rooms** | Team spaces (workspaces) with member management and role-based access; rooms can host meetings and appear in the calendar |
+| **MeetAction** | Desktop recordings are transcribed, analysed by AI, and turned into reviewable action items (tasks, decisions, risks, next steps); approved items are executed automatically against Jira, Notion, Slack, MeetCalendar or MeetBook |
+| **Meety AI** | Conversational AI assistant powered by GPT-4o-mini with tool-calling access to your calendar, rooms, notes, recordings and Jira; falls back to keyword responses if no API key is configured |
+| **Integrations** | Connect Slack, Microsoft Teams, Google Calendar, Jira, Notion, Zoom; MeetBox Desktop connection via a one-time MBOX session token |
 | **Settings** | Profile, organisation info, notification preferences, security (password change), account management |
-| **MeetBox Desktop** | Electron companion app — captures audio from video calls without bots; connects to the web app via a one-time MBOX token from the Integrations page |
+| **MeetBox Desktop** | Electron companion app — captures audio from video calls without bots, imports pre-recorded files, and deep-links straight into the matching MeetAction session on the web dashboard |
 | **Dark / Light mode** | System-aware theme with instant toggle, FOUC-free via inline script |
 | **Onboarding tour** | Guided first-run walkthrough |
 
@@ -55,9 +56,10 @@ MeetBox is a full-stack meeting management platform built for teams that want to
 | Language | TypeScript 5 |
 | Styling | [Tailwind CSS v3](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) patterns (Radix UI primitives) |
 | Database | [Supabase](https://supabase.com/) (PostgreSQL + Row Level Security) |
-| Auth | [NextAuth v5](https://authjs.dev/) — Google OAuth 2.0 + Email/Password + OTP magic codes |
+| Auth | [NextAuth v5](https://authjs.dev/) — Google OAuth 2.0 + Email/Password with OTP verification |
 | AI | [OpenAI API](https://platform.openai.com/) — `gpt-4o-mini`, function/tool calling |
-| Email | Nodemailer (SMTP) or [Resend](https://resend.com/) |
+| Email | [Brevo](https://www.brevo.com/) (HTTP API) → [Resend](https://resend.com/) → SMTP/Nodemailer, in that priority order |
+| Testing | [Vitest](https://vitest.dev/) |
 | Animations | [GSAP 3](https://gsap.com/) + [@gsap/react](https://gsap.com/react/) + [Framer Motion 12](https://www.framer.com/motion/) |
 | Icons | [Lucide React](https://lucide.dev/) + [react-icons](https://react-icons.github.io/react-icons/) |
 
@@ -76,70 +78,56 @@ MeetBox is a full-stack meeting management platform built for teams that want to
 ## Project Structure
 
 ```
-ProjectIntegrator/
-├── auth.ts                          # NextAuth config (Google OAuth + Credentials)
+MeetBox/
+├── auth.ts                          # NextAuth config (Google OAuth + Credentials, account linking)
 ├── middleware.ts                    # Route protection
 ├── next.config.ts
 │
 ├── src/
 │   ├── app/
 │   │   ├── layout.tsx               # Root layout — ThemeProvider, SessionProvider, anti-FOUC
-│   │   ├── page.tsx                 # Public landing page redirect
-│   │   ├── auth/                    # /auth — sign-in page (Google + email/OTP)
+│   │   ├── auth/                    # /auth — sign-in page (Google + email/OTP) and /auth/reset
 │   │   ├── calendar/                # /calendar — public calendar view
 │   │   ├── dashboard/               # /dashboard — main authenticated app shell
-│   │   ├── privacy/ & terms/        # Static legal pages
 │   │   └── api/
-│   │       ├── auth/
-│   │       │   ├── [...nextauth]/   # NextAuth handler
-│   │       │   ├── desktop/token/   # MBOX token generation & refresh
-│   │       │   ├── otp/             # OTP send & verify endpoints
-│   │       │   └── register/        # Email registration
-│   │       ├── meetings/today/      # Today's meetings endpoint
-│   │       ├── meetcalendar/        # Calendar CRUD (events, recurrence, iCal)
-│   │       ├── meety/               # AI assistant API
-│   │       │   └── conversations/[id]/messages/  # Message send/receive + tool loop
-│   │       ├── rooms/               # Rooms + members CRUD
-│   │       └── user/profile/        # Profile & integration settings
+│   │       ├── auth/                # NextAuth handler, register, OTP, password reset, OAuth
+│   │       │   ├── notion/ jira/ google-calendar/   # Per-integration OAuth init + callback
+│   │       │   └── password/        # forgot / reset (gated by password_hash, not provider)
+│   │       ├── desktop/              # Desktop session auth, recording upload, job status
+│   │       ├── meetaction/           # MeetAction sessions, items, approve, execute
+│   │       ├── meetcalendar/         # Calendar CRUD (events, recurrence, iCal)
+│   │       ├── meety/                # AI assistant API (conversations + tool loop)
+│   │       ├── rooms/                # Rooms + members CRUD
+│   │       └── integrations/         # Per-service connect/status endpoints
 │   │
 │   ├── components/
-│   │   ├── dashboard/
-│   │   │   ├── dashboard-shell.tsx  # Main layout: sidebar, header, nav routing
-│   │   │   ├── meetcalendar-view.tsx
-│   │   │   ├── meetbook-view.tsx
-│   │   │   ├── meetings-view.tsx
-│   │   │   ├── meety-view.tsx
-│   │   │   ├── rooms-view.tsx
-│   │   │   └── onboarding-tour.tsx
-│   │   ├── landing/                 # Public landing page components
-│   │   └── ui/                      # Shared UI primitives (session-provider, etc.)
+│   │   ├── dashboard/                # dashboard-shell + one view per module (meetaction-view, etc.)
+│   │   ├── landing/                  # Public landing page components
+│   │   └── ui/                       # Shared UI primitives (auth-tabs-card, otp-dialog, etc.)
 │   │
 │   └── lib/
-│       ├── meety-tools.ts           # OpenAI tool schemas + executor (11 tools)
-│       ├── supabase.ts              # Supabase client factory
-│       ├── email.ts                 # Nodemailer / Resend email helpers
-│       ├── otp-store.ts             # In-memory OTP store
-│       ├── theme.tsx                # Dark/light theme context
-│       └── utils.ts                 # cn() helper
+│       ├── meety-tools.ts            # OpenAI tool schemas + executor
+│       ├── integrations/             # Notion, Jira (jira-service.ts in services/), Slack, Zoom wrappers
+│       ├── services/                 # Business logic (jira-service, pipeline-orchestrator, etc.)
+│       ├── repositories/             # Supabase data-access layer
+│       ├── supabase.ts               # Supabase client factory
+│       ├── email.ts                  # Brevo / Resend / SMTP email helper chain
+│       ├── otp-store.ts              # In-memory OTP store
+│       ├── reset-token-store.ts      # In-memory password-reset token store
+│       ├── rate-limit.ts             # In-memory sliding-window rate limiter
+│       └── utils.ts                  # cn() helper
 │
-├── supabase/
-│   ├── schema.sql                   # Base tables: users
-│   ├── meetcalendar_migration.sql   # calendar_events table
-│   ├── meetings_migration.sql       # meeting_recordings table
-│   ├── meety_chat_migration.sql     # chat_conversations + chat_messages tables
-│   ├── recurrence_migration.sql     # Recurring event support
-│   ├── rooms_migration.sql          # rooms + room_members tables
-│   └── desktop_migration.sql        # desktop_tokens table
+├── supabase/                          # SQL migrations (see Database Setup below)
 │
-├── desktop/                         # Electron companion app (separate package)
+├── desktop/                           # Electron companion app (separate package)
 │   ├── package.json
-│   ├── build/                       # Electron Builder assets (icons, entitlements)
+│   ├── build/                         # Electron Builder assets (icons, entitlements)
 │   └── src/
-│       ├── main/                    # Electron main process
-│       ├── preload/                 # Preload scripts
-│       └── renderer/                # React UI (Vite)
+│       ├── main/                      # Electron main process (IPC, upload, deep-links)
+│       ├── preload/                   # Preload scripts (sandboxed IPC bridge)
+│       └── renderer/                  # React UI (Vite)
 │
-└── public/                          # Static assets (SVG illustrations, favicon)
+└── public/                            # Static assets (SVG illustrations, favicon)
 ```
 
 ---
@@ -148,10 +136,11 @@ ProjectIntegrator/
 
 ### Prerequisites
 
-- **Node.js 20+** and **npm**
+- **Node.js 20+** and **npm** (the project is npm-only — don't mix in another package manager's lockfile)
 - A [Supabase](https://supabase.com/) project (free tier works)
 - An [OpenAI API key](https://platform.openai.com/api-keys) _(optional — Meety works in fallback mode without one)_
 - Google OAuth credentials _(optional — only needed for Google sign-in)_
+- A [Brevo](https://www.brevo.com/) account _(optional — without an email provider, OTP/reset codes print to the terminal in development)_
 
 ### Environment Variables
 
@@ -161,8 +150,6 @@ Create a `.env.local` file at the project root with the following variables:
 # ── Authentication ──────────────────────────────────────────
 # Generate with: openssl rand -base64 32
 AUTH_SECRET=your_nextauth_secret
-
-# Full URL of your deployment (e.g. http://localhost:3000 in dev)
 AUTH_URL=http://localhost:3000
 
 # Google OAuth — from https://console.cloud.google.com/
@@ -175,58 +162,97 @@ OPENAI_API_KEY=sk-...
 
 # ── Supabase ────────────────────────────────────────────────
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
-# ── Email (choose ONE: SMTP or Resend) ──────────────────────
+# ── Email (priority: Brevo → Resend → SMTP) ─────────────────
+# In development, with none configured the OTP/reset code is printed
+# to the terminal instead of blocking registration.
 
-# Option A — SMTP (e.g. Gmail, SendGrid, Mailgun)
+# Option A — Brevo (recommended: sender verification in one click)
+BREVO_API_KEY=xkeysib-...
+SMTP_FROM=MeetBox <your_verified_sender@example.com>
+
+# Option B — Resend (requires a verified sending domain)
+RESEND_API_KEY=re_...
+RESEND_FROM=MeetBox <noreply@yourdomain.com>
+
+# Option C — Generic SMTP (e.g. Gmail with an app password)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your_email@gmail.com
 SMTP_PASS=your_app_password
-SMTP_FROM=MeetBox <noreply@yourdomain.com>
 
-# Option B — Resend (https://resend.com)
-RESEND_API_KEY=re_...
+# ── Integrations (all optional) ─────────────────────────────
+ZOOM_ACCOUNT_ID=...
+ZOOM_CLIENT_ID=...
+ZOOM_CLIENT_SECRET=...
+ZOOM_USER_EMAIL=...
+
+JIRA_CLIENT_ID=...
+JIRA_CLIENT_SECRET=...
+JIRA_REDIRECT_URI=http://localhost:3000/api/auth/jira/callback
+
+NOTION_CLIENT_ID=...
+NOTION_CLIENT_SECRET=...
+NOTION_REDIRECT_URI=http://localhost:3000/api/auth/notion/callback
 ```
 
 > **Note:** Never commit `.env.local` to version control. It is already excluded in `.gitignore`.
 
 ### Database Setup
 
-Run the SQL files in order in your Supabase project's **SQL Editor** (`Dashboard → SQL Editor → New query`):
+All SQL files live in `supabase/` and are idempotent (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`), so re-running any of them is safe. Run them in your Supabase project's **SQL Editor** (`Dashboard → SQL Editor → New query`) in this order:
 
 ```
-1. supabase/schema.sql                  — users table
-2. supabase/meetcalendar_migration.sql  — calendar_events table
-3. supabase/meetings_migration.sql      — meeting_recordings table
-4. supabase/meety_chat_migration.sql    — chat_conversations + chat_messages
-5. supabase/recurrence_migration.sql    — recurring event columns
-6. supabase/rooms_migration.sql         — rooms + room_members
-7. supabase/desktop_migration.sql       — desktop_tokens
+1. schema.sql                          — users table
+2. meetcalendar_migration.sql          — calendar_events
+3. meetings_migration.sql              — meeting_recordings
+4. meety_chat_migration.sql            — chat_conversations + chat_messages
+5. recurrence_migration.sql            — recurring event columns
+6. rooms_migration.sql                 — rooms + room_members
+7. workspace_roles_migration.sql       — workspace/role scoping
+8. workspace_scope_migration.sql       — workspace-scoped data access
+9. desktop_migration.sql               — legacy desktop_tokens (superseded by desktop_pipeline_migration.sql)
+10. desktop_pipeline_migration.sql     — desktop_sessions + recording → transcript → analysis pipeline
+11. meetaction_migration.sql           — meet_action_sessions/items/executions/execution_log
+12. rooms_meetaction_migration.sql     — links MeetAction sessions to rooms
+13. recordatorios_migration.sql        — reminders
+14. zoom_migration.sql                 — Zoom OAuth columns
+15. jira_migration.sql                 — Jira OAuth columns
+16. notion_migration.sql               — Notion OAuth columns
+17. notion_default_database_migration.sql — auto-provisioned Notion database id
 ```
 
-Each file is idempotent (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`) so re-running them is safe.
+`_COMBINED_meetaction_setup.sql` bundles several of the MeetAction-related migrations for a faster one-shot setup; prefer the individual files above unless you know you want the combined version. `cleanup_old_calendar_events.sql` is a maintenance script, not part of the initial setup.
 
 ### Installation & Development
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/TITOS-DEV/ProjectIntegrator.git
-cd ProjectIntegrator
+git clone https://github.com/MeetBoxIA/MeetBox.git
+cd MeetBox
 
 # 2. Install dependencies
 npm install
 
 # 3. Configure environment
-cp .env.local.example .env.local
-# Edit .env.local and fill in your values
+# Create .env.local and fill in the values from the section above
 
 # 4. Run the development server
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### Testing & Linting
+
+```bash
+npm test              # Run the test suite once (Vitest)
+npm run test:watch    # Watch mode
+npm run test:coverage # Coverage report
+npm run lint          # ESLint (first run prompts you to choose a config — pick "Strict")
+```
 
 ### Production Build
 
@@ -239,16 +265,17 @@ npm run start
 
 ## Desktop App
 
-The `desktop/` folder contains a standalone **Electron + Vite + React** application that captures audio from video calls (Zoom, Google Meet, Microsoft Teams) directly on the user's machine — no bots, no third-party servers.
+The `desktop/` folder contains a standalone **Electron + Vite + React** application that captures audio from video calls (Zoom, Google Meet, Microsoft Teams) directly on the user's machine — no bots, no third-party servers. It can also import a pre-recorded audio/video file instead of recording live.
 
 ### Connection Flow
 
 1. Open MeetBox in the browser and go to **Integrations**.
-2. Copy the generated **MBOX token** (a unique code tied to your account).
+2. Generate an **MBOX session token** tied to your account.
 3. Open MeetBox Desktop, click **Connect account**, and paste the token.
-4. The desktop app is now linked to your account and can sync recordings.
+4. Record a meeting (or import an existing file) — it uploads, gets transcribed and analysed, and turns into a **MeetAction** session.
+5. Click **"Revisar acciones en el dashboard"** to deep-link straight into that session on the web dashboard and approve/execute the resulting actions.
 
-Tokens can be regenerated at any time from the Integrations page, which immediately invalidates the previous token.
+Tokens can be regenerated or revoked at any time from the Integrations page; revoking immediately invalidates the previous session.
 
 ### Desktop Development
 
@@ -272,14 +299,16 @@ npm run package:mac     # macOS (.dmg)
 
 ## Authentication
 
-MeetBox supports two sign-in methods, both backed by NextAuth v5 with a **JWT session strategy**:
+MeetBox supports two sign-in methods, both backed by NextAuth v5 with a **JWT session strategy**, and they can be **linked on the same email**:
 
 | Method | How it works |
 |---|---|
-| **Google OAuth** | One-click sign-in via Google. User is upserted into Supabase `users` table on first login. |
-| **Email + OTP** | User registers with email + password, then verifies with a 6-digit OTP code sent to their inbox. Subsequent logins use email + password. |
+| **Google OAuth** | One-click sign-in via Google. On first sign-in the user is created in Supabase `users`; on subsequent sign-ins only the profile (name, avatar) is refreshed. |
+| **Email + Password** | User registers with email + password, verifies with a 4-digit OTP code sent to their inbox, then logs in with email + password. Password can be recovered via **Forgot password** (emailed reset link, 30-minute single-use token). |
 
-The Supabase `users` table stores a `provider` column (`'google'` or `'email'`) so both paths coexist cleanly. Google users have a `NULL` `password_hash`.
+Whether an account can use manual login and password reset is determined by whether it has a `password_hash` set — **not** by which provider it originally signed up with. This means a user who registers with email + password and later also signs in with Google on the same address keeps full access to both: Google sign-in, manual email/password login, and password recovery all keep working together.
+
+In development, OTP codes are always printed to the terminal (in addition to being emailed) so you can test the registration flow without checking an inbox.
 
 ---
 
@@ -298,23 +327,7 @@ Meety is the built-in AI assistant, accessible from the sidebar in the dashboard
 
 If `OPENAI_API_KEY` is not set (or the API call fails), Meety falls back to a lightweight keyword-based response system so the app remains functional during development.
 
-### Available Tools
-
-| Tool | Description |
-|---|---|
-| `get_today_meetings` | List all of the user's events for today |
-| `get_events_in_range` | Fetch events between two dates (e.g. "this week") |
-| `create_event` | Create a new calendar event, meeting, or reminder |
-| `update_event` | Edit title, time, location, or description of an existing event |
-| `delete_event` | Delete an event (asks for confirmation first) |
-| `list_rooms` | List all rooms with member count and today's meeting count |
-| `get_room_detail` | Get full detail of a room: members and today's meetings |
-| `list_notebooks` | List all notebooks in MeetBook with their note count |
-| `list_notes` | List notes inside a specific notebook |
-| `create_note` | Create a new note in a notebook |
-| `list_recent_recordings` | List the user's most recent meeting recordings |
-
-Every tool call is scoped to the **authenticated user's `user_id`** — the model can never read or modify another user's data.
+Every tool call is scoped to the **authenticated user's `user_id`** — the model can never read or modify another user's data. See `src/lib/meety-tools.ts` for the full tool list (calendar, rooms, notes, recordings, Jira).
 
 ### Modes
 
@@ -326,54 +339,40 @@ Every tool call is scoped to the **authenticated user's `user_id`** — the mode
 
 ---
 
-## API Routes
+## MeetAction & Integrations
 
-```
-POST   /api/auth/register              Register with email + password
-POST   /api/auth/otp/send              Send OTP to email
-POST   /api/auth/otp/verify            Verify OTP code
-GET    /api/auth/desktop/token         Get MBOX desktop connection token
-DELETE /api/auth/desktop/token         Regenerate MBOX token
+MeetAction turns a meeting recording (live or imported) into a reviewable list of action items, which the user approves and MeetBox then executes against the connected destination:
 
-GET    /api/meetings/today             Today's meetings for the home dashboard
+| Destination | What gets created |
+|---|---|
+| **Jira** | An issue, with its type/priority/assignee/due date only sent if the project's create screen actually supports them (discovered via Jira's `createmeta` endpoint) — avoids failures on team-managed or localized projects |
+| **Notion** | A page with native properties (Status, Priority, Type, Assignee, Email) mapped onto whatever columns the shared database already has, auto-adding any missing standard column; if no usable database is shared, one is auto-provisioned under an accessible page |
+| **Slack** | A formatted message to a channel |
+| **MeetCalendar** | A calendar event |
+| **MeetBook** | A note in a "MeetAction" notebook |
 
-GET    /api/meetcalendar/events        List calendar events
-POST   /api/meetcalendar/events        Create event
-PATCH  /api/meetcalendar/events/[id]   Update event
-DELETE /api/meetcalendar/events/[id]   Delete event
-
-GET    /api/rooms                      List rooms
-POST   /api/rooms                      Create room
-PATCH  /api/rooms/[id]                 Update room
-
-GET    /api/meety/conversations        List conversations
-POST   /api/meety/conversations        Create conversation
-GET    /api/meety/conversations/[id]/messages    List messages
-POST   /api/meety/conversations/[id]/messages    Send message → get AI reply
-
-PATCH  /api/user/profile               Update profile & integrations
-```
+All integrations (Slack, Microsoft Teams, Google Calendar, Jira, Notion, Zoom) use OAuth 2.0; tokens are stored on the user's row and refreshed automatically where the provider supports it (Jira).
 
 ---
 
 ## Database Schema
 
-The Supabase PostgreSQL schema includes the following tables:
+The Supabase PostgreSQL schema includes (non-exhaustive — see `supabase/*.sql` for the authoritative definitions):
 
 | Table | Purpose |
 |---|---|
-| `users` | Accounts (email/Google), hashed passwords, avatar URLs |
+| `users` | Accounts (email/Google), hashed passwords, avatar URLs, per-integration OAuth tokens |
 | `calendar_events` | Events, meetings and reminders with recurrence support |
-| `rooms` | Team spaces |
-| `room_members` | People assigned to a room |
-| `notebooks` | MeetBook notebooks |
-| `notes` | Individual notes within notebooks (block content) |
-| `meeting_recordings` | Imported audio/video recordings |
-| `chat_conversations` | Meety AI conversation threads |
-| `chat_messages` | Individual messages (user + assistant) with mode tag |
-| `desktop_tokens` | MBOX tokens linking desktop app to web accounts |
+| `rooms` / `room_members` | Team workspaces and their members |
+| `notebooks` / `notes` | MeetBook notebooks and block-content notes |
+| `meeting_recordings` | Imported/recorded audio or video |
+| `desktop_sessions` | Bearer-token sessions linking the desktop app to a web account |
+| `meeting_processing_jobs` | Transcription/analysis pipeline job status |
+| `meet_action_sessions` / `meet_action_items` | MeetAction sessions and their reviewable action items |
+| `meet_action_executions` / `meet_action_execution_log` | Execution runs and per-item execution history |
+| `chat_conversations` / `chat_messages` | Meety AI conversation threads and messages |
 
-Row Level Security (RLS) is enabled on all tables with service-role-only policies; all queries from Next.js use the Supabase service role key.
+Row Level Security (RLS) is enabled on all tables with service-role-only policies; all queries from Next.js use the Supabase service role key, with results additionally scoped to the authenticated user's ID in application code (defense in depth).
 
 ---
 
@@ -381,19 +380,22 @@ Row Level Security (RLS) is enabled on all tables with service-role-only policie
 
 | Branch | Purpose |
 |---|---|
-| `main` | Stable production-ready code |
-| `feature/desktop` | MeetBox Desktop Electron app development |
+| `feature/landing` | Main integration branch |
+| `deploy` | Current deployment branch (may be ahead of `feature/landing`) |
+| `feature/*` | Per-feature development branches (desktop, meetaction, meety, security, etc.) |
 
 ---
 
 ## Contributing
 
-1. Fork the repository and create a feature branch from `main`.
+1. Create a feature branch from `feature/landing`.
 2. Follow the existing code style (TypeScript strict mode, Tailwind utility classes, no default exports for utility functions).
 3. Keep API routes thin — business logic belongs in `src/lib/`.
 4. All Supabase queries must be scoped to the authenticated user's ID.
 5. If you add a new Meety tool, add its schema to `MEETY_TOOLS` in `src/lib/meety-tools.ts` and implement its case in `executeTool`.
-6. Open a pull request against `main` with a clear description of what changed and why.
+6. Open a pull request with a clear description of what changed and why.
+
+For AI-assisted development with Claude Code, see `CLAUDE.md` for the full technical reference (directory map, debugging tips, common task recipes).
 
 ---
 

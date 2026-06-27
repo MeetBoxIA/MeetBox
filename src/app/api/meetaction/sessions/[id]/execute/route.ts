@@ -12,6 +12,7 @@ import { getSupabase } from "@/lib/supabase";
 import { sendSlackMessage } from "@/lib/integrations/slack";
 import { createZoomMeeting as createZoomMeetingOAuth } from "@/lib/integrations/zoom";
 import { JiraService } from "@/lib/services/jira-service";
+import { NotionService, type NotionDatabase } from "@/lib/integrations/notion";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -116,6 +117,21 @@ async function createZoomMeeting(
   return { ok: true, meetingId: String(data.id), joinUrl: data.join_url };
 }
 
+/** Notion's built-in "People" collection rejects all page creation via the API. */
+function isSpecialCollection(title: string): boolean {
+  return /^people$/i.test(title.trim());
+}
+
+/**
+ * Pick the best database among ones already known to be usable (callers
+ * filter out special collections first). Prefers a name that looks
+ * MeetBox-related; otherwise falls back to the first one available.
+ */
+function pickDatabase(dbs: NotionDatabase[]): NotionDatabase {
+  const looksLikeMeetBox = (title: string) => /meetbox|meetaction|tarea|task|acci[oó]n|action/i.test(title);
+  return dbs.find((d) => looksLikeMeetBox(d.title)) ?? dbs[0];
+}
+
 // Dispatcher — routes each action item to its destination service
 async function dispatchItem(
   userId: string,
@@ -132,7 +148,13 @@ async function dispatchItem(
       const creds = await JiraService.getCredentials(userId);
       if (!creds) return { ok: false, error: "Jira no conectado. Conecta tu cuenta desde Integraciones." };
 
-      let projectKey = item.project_key as string | undefined;
+      // Project comes from destination_meta (set when the user picks a project
+      // in the UI) — item.project_key was never a real column and always fell
+      // through to the first project the integration could see.
+      const meta = (item.destination_meta ?? {}) as {
+        project?: string; issue_type?: string; labels?: string[]; start_at?: string;
+      };
+      let projectKey = meta.project;
       if (!projectKey) {
         const projects = await JiraService.getProjects(userId);
         if (projects.length === 0) return { ok: false, error: "No se encontraron proyectos en Jira" };
@@ -142,18 +164,35 @@ async function dispatchItem(
       const priorityMap: Record<string, string> = {
         low: "Low", medium: "Medium", high: "High", critical: "Highest",
       };
+      const typeToJira: Record<string, string> = {
+        task: "Task", next_step: "Task", risk: "Bug", decision: "Task", note: "Task", event: "Task",
+      };
 
-      const result = await JiraService.createIssue(userId, {
+      // Best-effort: resolve the assignee's Atlassian account id by name/email.
+      // getCreateMeta (inside createIssue) still gates whether "assignee" is
+      // actually on the project's create screen before sending it.
+      let assigneeId: string | undefined;
+      const who = item.assignee_email || item.assignee_name;
+      if (who) {
+        const matches = await JiraService.findUser(userId, String(who));
+        assigneeId = matches[0]?.accountId;
+      }
+
+      const dueDate = meta.start_at ? meta.start_at.slice(0, 10) : undefined;
+
+      const created = await JiraService.createIssue(userId, {
         projectKey,
         summary:     String(item.title ?? "Tarea de MeetBox"),
         description: String(item.description ?? ""),
-        issueType:   "Task",
+        issueType:   meta.issue_type ?? typeToJira[String(item.type)] ?? "Task",
         priority:    priorityMap[String(item.priority ?? "medium")] ?? "Medium",
-        labels:      ["meetbox"],
+        assigneeId,
+        labels:      meta.labels?.length ? meta.labels : ["meetbox"],
+        dueDate,
       });
 
-      if (!result) return { ok: false, error: "Error al crear issue en Jira" };
-      return { ok: true, external_id: result.key, external_url: result.url };
+      if (!created.ok) return { ok: false, error: created.error };
+      return { ok: true, external_id: created.result.key, external_url: created.result.url };
     }
     case "zoom": {
       const result = await createZoomMeeting(userId, item);
@@ -170,8 +209,51 @@ async function dispatchItem(
       const noteId = await createMeetBookNote(userId, item);
       return { ok: true, external_id: noteId ?? `note-${Date.now()}`, external_url: "/dashboard?section=meetbook" };
     }
+    case "notion": {
+      const creds = await NotionService.getCredentials(userId);
+      if (!creds) return { ok: false, error: "Notion no conectado. Conecta tu cuenta desde Integraciones." };
+
+      // Resolve databaseId: prefer item.destination_meta, else pick first available database.
+      const meta       = (item.destination_meta ?? {}) as { database_id?: string };
+      let databaseId   = meta.database_id;
+
+      if (!databaseId) {
+        const dbs    = await NotionService.getDatabases(userId);
+        const usable = dbs.filter((d) => !isSpecialCollection(d.title));
+
+        if (usable.length > 0) {
+          databaseId = pickDatabase(usable).id;
+        } else {
+          // Only "People" (or nothing) is shared — auto-provision a dedicated
+          // database under any page the integration can see, if one exists.
+          databaseId = (await NotionService.getOrCreateDefaultDatabase(userId)) ?? undefined;
+          if (!databaseId) {
+            return {
+              ok: false,
+              error: dbs.length > 0
+                ? "Solo se encontró la colección especial 'People' en Notion, y no hay ninguna página accesible para crear una base de datos nueva. Comparte una base de datos normal o una página con la integración."
+                : "No se encontraron bases de datos ni páginas en Notion. Comparte al menos una con la integración.",
+            };
+          }
+        }
+      }
+
+      const page = await NotionService.createPage(userId, {
+        databaseId,
+        title:       String(item.title ?? "Tarea de MeetBox"),
+        type:        item.type ? String(item.type) : undefined,
+        priority:    item.priority ? String(item.priority) : undefined,
+        status:      "Pendiente",
+        assignee:    item.assignee_name ? String(item.assignee_name) : undefined,
+        email:       item.assignee_email ? String(item.assignee_email) : undefined,
+        description: item.description ? String(item.description) : undefined,
+      });
+
+      if (!page) return { ok: false, error: "Error al crear página en Notion" };
+      return { ok: true, external_id: page.id, external_url: page.url };
+    }
     default:
-      return { ok: true, external_id: `stub-${Date.now()}`, external_url: "#" };
+      return { ok: false, error: `Destino "${item.destination}" no soportado.` };
   }
 }
 
@@ -319,7 +401,12 @@ export async function POST(_req: NextRequest, { params }: Params) {
       .update({ status: "executing", updated_at: new Date().toISOString() })
       .eq("id", item.id);
 
-    const result = await dispatchItem(userId, item as Record<string, unknown>);
+    let result: { ok: boolean; external_id?: string; external_url?: string; error?: string };
+    try {
+      result = await dispatchItem(userId, item as Record<string, unknown>);
+    } catch (e) {
+      result = { ok: false, error: e instanceof Error ? e.message : "Error inesperado al ejecutar el ítem" };
+    }
 
     if (result.ok) {
       executedCount++;

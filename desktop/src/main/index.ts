@@ -220,7 +220,7 @@ function createTray(): void {
       click: () => { mainWindow?.show(); mainWindow?.webContents.send('tray-toggle-recording') },
     },
     { type: 'separator' },
-    { label: 'Abrir dashboard web', click: () => shell.openExternal(MEETBOX_API_URL + '/dashboard') },
+    { label: 'Abrir dashboard web', click: () => shell.openExternal(readApiUrl() + '/dashboard') },
     { type: 'separator' },
     { label: 'Salir', click: () => { app.isQuitting = true; app.quit() } },
   ])
@@ -253,8 +253,71 @@ function registerIpcHandlers(): void {
   // Info
   ipcMain.handle('get-app-version', () => app.getVersion())
 
-  // Dashboard
-  ipcMain.on('open-dashboard', () => shell.openExternal(MEETBOX_API_URL + '/dashboard'))
+  // Dashboard — opens the web app; if a sessionId is provided, deep-links to
+  // that specific MeetAction session so the user lands exactly on their results.
+  ipcMain.on('open-dashboard', (_e, sessionId?: string) => {
+    const base = readApiUrl() + '/dashboard'
+    const url  = sessionId
+      ? `${base}?section=meetaction&session=${encodeURIComponent(sessionId)}`
+      : `${base}?section=meetaction`
+    shell.openExternal(url)
+  })
+
+  // Import an existing audio/video recording.
+  // If filePath is provided, uploads that file directly (e.g. after saving a new
+  // recording). Otherwise opens a file picker to let the user choose any file.
+  ipcMain.handle('import-recording', async (_e, providedPath?: string) => {
+    let filePath: string
+
+    if (providedPath) {
+      filePath = providedPath
+    } else {
+      const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow!, {
+        title:      'Selecciona una grabación para importar',
+        buttonLabel: 'Importar',
+        filters: [
+          { name: 'Audio / Video', extensions: ['mp3', 'wav', 'm4a', 'webm', 'mp4', 'ogg', 'flac'] },
+          { name: 'Todos los archivos', extensions: ['*'] },
+        ],
+        properties: ['openFile'],
+      })
+      if (canceled || filePaths.length === 0) return { ok: false, error: 'Cancelado' }
+      filePath = filePaths[0]
+    }
+
+    const token = readAccessToken()
+    if (!token) return { ok: false, error: 'No hay sesión de desktop. Reconecta tu cuenta.' }
+
+    const filename = filePath.split(/[\\/]/).pop() ?? 'grabacion-importada'
+    const ext = filename.split('.').pop()?.toLowerCase() ?? ''
+    const MIME_BY_EXT: Record<string, string> = {
+      webm: 'audio/webm', ogg: 'audio/ogg', mp3: 'audio/mpeg',
+      wav:  'audio/wav',  m4a: 'audio/mp4', mp4: 'video/mp4', flac: 'audio/flac',
+    }
+    const mime = MIME_BY_EXT[ext] ?? 'application/octet-stream'
+
+    try {
+      const buffer = fs.readFileSync(filePath)
+
+      const form = new FormData()
+      form.append('file', new Blob([buffer], { type: mime }), filename)
+      form.append('metadata', JSON.stringify({
+        meetingTitle: filename.replace(/\.[^.]+$/, ''),
+        source:       'import',
+      }))
+
+      const res  = await fetch(readApiUrl() + '/api/desktop/upload', {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body:    form,
+      })
+      const data = await res.json().catch(() => ({})) as { job_id?: string; error?: string }
+      if (!res.ok) return { ok: false, error: data.error ?? `Error ${res.status}` }
+      return { ok: true, jobId: data.job_id }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Error al importar' }
+    }
+  })
 
   // ── Conexión con cuenta web ──────────────────────────────────────────────────
   ipcMain.handle('get-connection', (): ConnectionData | null => {

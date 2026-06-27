@@ -17,7 +17,12 @@ import { newCorrelationId, pipelineLogger } from "@/lib/logger";
 import type { DesktopUploadMeta } from "@/lib/types/pipeline";
 
 const MAX_BYTES      = 200 * 1024 * 1024; // 200 MB cap
-const ALLOWED_MIME   = ["audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/wav", "video/webm"];
+const ALLOWED_MIME   = [
+  "audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/wav",
+  "audio/x-wav", "audio/flac", "audio/x-m4a",
+  "video/webm", "video/mp4",
+];
+const ALLOWED_EXT_RE = /\.(webm|ogg|mp3|wav|m4a|mp4|flac)$/i;
 
 // CORS for the Electron renderer (it may call directly in addition to the IPC proxy).
 const CORS = {
@@ -50,8 +55,14 @@ export async function POST(req: NextRequest) {
   if (file.size > MAX_BYTES) {
     return NextResponse.json({ error: `El archivo excede el máximo de ${MAX_BYTES / 1048576}MB` }, { status: 413, headers: CORS });
   }
-  if (file.type && !ALLOWED_MIME.includes(file.type)) {
+  // A generic/empty MIME (e.g. from a Blob created without an explicit type)
+  // is validated by file extension instead of rejecting outright.
+  const isGenericMime = !file.type || file.type === "application/octet-stream";
+  if (!isGenericMime && !ALLOWED_MIME.includes(file.type)) {
     return NextResponse.json({ error: `Formato no soportado: ${file.type}` }, { status: 415, headers: CORS });
+  }
+  if (isGenericMime && !ALLOWED_EXT_RE.test(file.name)) {
+    return NextResponse.json({ error: "Formato no soportado" }, { status: 415, headers: CORS });
   }
 
   let meta: DesktopUploadMeta = {};

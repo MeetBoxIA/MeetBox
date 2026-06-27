@@ -1463,11 +1463,13 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
   );
 
   // ── OAuth status tracking ─────────────────────────────────────────────────
-  const [jiraConnected,  setJiraConnected]  = React.useState(false);
-  const [jiraSiteUrl,    setJiraSiteUrl]    = React.useState<string | null>(null);
-  const [gcalConnected,  setGcalConnected]  = React.useState(false);
-  const [zoomConnected,  setZoomConnected]  = React.useState(false);
-  const [zoomEmail,      setZoomEmail]      = React.useState<string | null>(null);
+  const [jiraConnected,    setJiraConnected]    = React.useState(false);
+  const [jiraSiteUrl,      setJiraSiteUrl]      = React.useState<string | null>(null);
+  const [gcalConnected,    setGcalConnected]    = React.useState(false);
+  const [zoomConnected,    setZoomConnected]    = React.useState(false);
+  const [zoomEmail,        setZoomEmail]        = React.useState<string | null>(null);
+  const [notionConnected,  setNotionConnected]  = React.useState(false);
+  const [notionWorkspace,  setNotionWorkspace]  = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<{ msg: string; type: "success" | "error" | "info" } | null>(null);
 
   // Check OAuth statuses on mount + handle URL query params for toasts
@@ -1488,11 +1490,20 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
       })
       .catch(() => {});
 
+    fetch("/api/auth/notion/status")
+      .then((r) => r.ok ? r.json() : { connected: false })
+      .then((d: { connected: boolean; workspace_name?: string }) => {
+        setNotionConnected(d.connected);
+        setNotionWorkspace(d.workspace_name ?? null);
+      })
+      .catch(() => {});
+
     // Handle query params from OAuth callbacks
     const params = new URLSearchParams(window.location.search);
-    const jiraStatus = params.get("jira");
-    const gcalStatus = params.get("gcal");
-    const zoomStatus = params.get("zoom");
+    const jiraStatus   = params.get("jira");
+    const gcalStatus   = params.get("gcal");
+    const zoomStatus   = params.get("zoom");
+    const notionStatus = params.get("notion");
     if (jiraStatus === "connected") {
       setToast({ msg: "¡Jira conectado exitosamente!", type: "success" });
       setJiraConnected(true);
@@ -1518,12 +1529,26 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
     } else if (zoomStatus === "error") {
       setToast({ msg: "Error al conectar Zoom", type: "error" });
     }
+    if (notionStatus === "connected") {
+      setToast({ msg: "¡Notion conectado exitosamente!", type: "success" });
+      setNotionConnected(true);
+      fetch("/api/auth/notion/status")
+        .then((r) => r.ok ? r.json() : { connected: false })
+        .then((d: { connected: boolean; workspace_name?: string }) => setNotionWorkspace(d.workspace_name ?? null))
+        .catch(() => {});
+    } else if (notionStatus === "denied") {
+      setToast({ msg: "Autorización de Notion denegada", type: "error" });
+    } else if (notionStatus === "error") {
+      setToast({ msg: "Error al conectar Notion", type: "error" });
+    }
+
     // Clean URL params
-    if (jiraStatus || gcalStatus || zoomStatus) {
+    if (jiraStatus || gcalStatus || zoomStatus || notionStatus) {
       const url = new URL(window.location.href);
       url.searchParams.delete("jira");
       url.searchParams.delete("gcal");
       url.searchParams.delete("zoom");
+      url.searchParams.delete("notion");
       window.history.replaceState({}, "", url.toString());
     }
   }, []);
@@ -1534,16 +1559,18 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
   }, [toast]);
 
   function isOAuthConnected(id: string): boolean {
-    if (id === "jira") return jiraConnected;
-    if (id === "gcal") return gcalConnected;
-    if (id === "zoom") return zoomConnected;
+    if (id === "jira")   return jiraConnected;
+    if (id === "gcal")   return gcalConnected;
+    if (id === "zoom")   return zoomConnected;
+    if (id === "notion") return notionConnected;
     return connected.includes(id);
   }
 
   async function handleConnect(id: string) {
-    if (id === "jira")  { window.location.href = "/api/auth/jira"; return; }
-    if (id === "gcal")  { window.location.href = "/api/auth/google-calendar"; return; }
-    if (id === "zoom")  { window.location.href = "/api/integrations/zoom/connect"; return; }
+    if (id === "jira")   { window.location.href = "/api/auth/jira"; return; }
+    if (id === "gcal")   { window.location.href = "/api/auth/google-calendar"; return; }
+    if (id === "zoom")   { window.location.href = "/api/integrations/zoom/connect"; return; }
+    if (id === "notion") { window.location.href = "/api/auth/notion"; return; }
     await toggle(id);
   }
 
@@ -1562,6 +1589,14 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
       setZoomConnected(false); setZoomEmail(null);
       setSaving(null);
       setToast({ msg: "Zoom desconectado", type: "info" });
+      return;
+    }
+    if (id === "notion") {
+      setSaving(id);
+      await fetch("/api/auth/notion/status", { method: "DELETE" });
+      setNotionConnected(false); setNotionWorkspace(null);
+      setSaving(null);
+      setToast({ msg: "Notion desconectado", type: "info" });
       return;
     }
     await toggle(id);
@@ -1707,6 +1742,12 @@ function IntegrationsView({ profile, onUpdate }: { profile: Profile; onUpdate: (
                     <p className="text-[10px] text-[#2D8CFF] mt-1.5 font-medium truncate flex items-center gap-1">
                       <Mail className="w-3 h-3 shrink-0" />
                       {zoomEmail}
+                    </p>
+                  )}
+                  {id === "notion" && isConn && notionWorkspace && (
+                    <p className="text-[10px] text-[#191919] mt-1.5 font-medium truncate flex items-center gap-1">
+                      <Globe className="w-3 h-3 shrink-0" />
+                      {notionWorkspace}
                     </p>
                   )}
                 </div>
@@ -2405,7 +2446,25 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
   const [meetyInitialMsg,  setMeetyInitialMsg]  = React.useState<string | undefined>(undefined);
   const [activeWorkspace,  setActiveWorkspace]  = React.useState<WorkspaceInfo | null>(null);
   const [allWorkspaces,    setAllWorkspaces]    = React.useState<WorkspaceInfo[]>([]);
+  const [deepLinkSession,  setDeepLinkSession]  = React.useState<string | null>(null);
+  const [deepLinkSection,  setDeepLinkSection]  = React.useState<string | null>(null);
   const isFreePlan = true;
+
+  // Read ?section=<nav>&session=<id> from URL on first render (desktop deep-link).
+  React.useEffect(() => {
+    const params  = new URLSearchParams(window.location.search);
+    const section = params.get("section");
+    const session = params.get("session");
+    if (section) { setActiveNav(section); setDeepLinkSection(section); }
+    if (session) setDeepLinkSession(session);
+    // Clean the query string so refreshing doesn't re-trigger the deep-link.
+    if (section || session) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("section");
+      url.searchParams.delete("session");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
 
   // Reload workspace list whenever the active workspace changes
   React.useEffect(() => {
@@ -2430,7 +2489,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
       case "meetcalendar":            return <RecordatoriosView workspaceId={activeWorkspace!.id} onOpenMeety={(msg) => { setMeetyInitialMsg(msg); setActiveNav("meety"); }} />;
       case "recordatorios":           return <RecordatoriosView workspaceId={activeWorkspace!.id} onOpenMeety={(msg) => { setMeetyInitialMsg(msg); setActiveNav("meety"); }} />;
       case "meetbook":                return <MeetBookView workspaceId={activeWorkspace!.id} />;
-      case "meetaction":              return <MeetActionView workspaceId={activeWorkspace!.id} />;
+      case "meetaction":              return <MeetActionView workspaceId={activeWorkspace?.id} initialSessionId={deepLinkSession} />;
       case "plans":                   return <PlansView onBack={() => setActiveNav("settings-account")} />;
       case "integrations":            return <IntegrationsView profile={profile} onUpdate={handleProfileUpdate} />;
       case "settings-profile":        return <SettingsProfile user={user} profile={profile} onUpdate={handleProfileUpdate} />;
@@ -2450,7 +2509,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
     activeWorkspace,
     allWorkspaces,
     onUpdateWorkspace: (updated: WorkspaceInfo) => setActiveWorkspace(updated),
-    onSwitchWorkspace: (ws: WorkspaceInfo) => { setActiveWorkspace(ws); setActiveNav("home"); },
+    onSwitchWorkspace: (ws: WorkspaceInfo) => { setActiveWorkspace(ws); setActiveNav(deepLinkSection ?? "home"); setDeepLinkSection(null); },
     onBackToSelector:  () => setActiveWorkspace(null),
   };
 
@@ -2459,7 +2518,7 @@ export default function DashboardShell({ user, profile: initialProfile }: Dashbo
     return (
       <NotificationProvider>
         <WorkspaceSelectorScreen
-          onSelect={(ws) => { setActiveWorkspace(ws); setActiveNav("home"); }}
+          onSelect={(ws) => { setActiveWorkspace(ws); setActiveNav(deepLinkSection ?? "home"); setDeepLinkSection(null); }}
         />
       </NotificationProvider>
     );

@@ -5,7 +5,7 @@ import { signIn } from "next-auth/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OtpDialog } from "@/components/ui/otp-dialog";
 import { FaGoogle } from "react-icons/fa";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowLeft, CheckCircle2 } from "lucide-react";
 
 interface AuthTabsCardProps {
   defaultTab?: "sign-in" | "sign-up";
@@ -17,6 +17,13 @@ export default function AuthTabsCard({ defaultTab = "sign-in" }: AuthTabsCardPro
   const [pendingEmail, setPendingEmail] = React.useState("");
   const [loading, setLoading] = React.useState<string | null>(null);
   const [error, setError] = React.useState("");
+  const [signupSuccess, setSignupSuccess] = React.useState(false);
+
+  // Forgot-password panel state
+  const [forgotOpen, setForgotOpen] = React.useState(false);
+  const [forgotEmail, setForgotEmail] = React.useState("");
+  const [forgotStatus, setForgotStatus] = React.useState<"idle" | "loading" | "sent">("idle");
+  const [forgotError, setForgotError] = React.useState("");
 
   // Sign-in form state
   const [siEmail, setSiEmail] = React.useState("");
@@ -65,6 +72,10 @@ export default function AuthTabsCard({ defaultTab = "sign-in" }: AuthTabsCardPro
       setError("La contraseña debe tener al menos 8 caracteres.");
       return;
     }
+    if (!/[A-Z]/.test(suPassword) || !/[0-9]/.test(suPassword)) {
+      setError("La contraseña debe incluir al menos una mayúscula y un número.");
+      return;
+    }
     setLoading("signup");
     setError("");
     try {
@@ -84,7 +95,7 @@ export default function AuthTabsCard({ defaultTab = "sign-in" }: AuthTabsCardPro
   }
 
   async function onOtpVerified() {
-    // 1. Crear usuario en Supabase
+    // Crear usuario en Supabase
     const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -92,25 +103,135 @@ export default function AuthTabsCard({ defaultTab = "sign-in" }: AuthTabsCardPro
     });
 
     if (!res.ok) {
-      const { error } = await res.json();
+      const { error } = await res.json().catch(() => ({ error: undefined }));
       setOtpOpen(false);
+      setActiveTab("sign-up");
       setError(error ?? "Error al crear la cuenta.");
       return;
     }
 
-    // 2. Iniciar sesión con el usuario recién creado
-    await signIn("credentials", {
-      email: pendingEmail,
-      password: suPassword,
-      otpVerified: "true",
-      callbackUrl: "/dashboard",
-    });
+    // Éxito: cerrar el diálogo OTP, limpiar el formulario de registro y
+    // mostrar el panel de confirmación en lugar de iniciar sesión automáticamente.
+    setOtpOpen(false);
+    setSuName("");
+    setSuEmail("");
+    setSuPassword("");
+    setPendingEmail("");
+    setSignupSuccess(true);
   }
 
   const toggleTab = () => {
     setActiveTab((p) => (p === "sign-in" ? "sign-up" : "sign-in"));
     setError("");
   };
+
+  async function handleForgotPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!forgotEmail) return;
+    setForgotStatus("loading");
+    setForgotError("");
+    try {
+      await fetch("/api/auth/password/forgot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail.toLowerCase().trim() }),
+      });
+      // Always show "sent" — anti-enumeration: never reveal if email exists.
+      setForgotStatus("sent");
+    } catch {
+      setForgotError("No se pudo conectar. Intenta de nuevo.");
+      setForgotStatus("idle");
+    }
+  }
+
+  // ── Signup success panel (replaces the card content) ───────────────────────
+  if (signupSuccess) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-4 text-center">
+        <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+          <CheckCircle2 className="w-6 h-6 text-green-600" />
+        </div>
+        <p className="font-semibold text-[#050040]">¡Cuenta creada!</p>
+        <p className="text-sm text-slate-500">
+          Tu cuenta se creó correctamente. Inicia sesión para continuar.
+        </p>
+        <button
+          onClick={() => { setSignupSuccess(false); setActiveTab("sign-in"); setError(""); }}
+          className="mt-2 w-full rounded-xl bg-[#050040] py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
+        >
+          Ir a iniciar sesión
+        </button>
+      </div>
+    );
+  }
+
+  // ── Forgot-password panel (replaces the card content) ─────────────────────
+  if (forgotOpen) {
+    return (
+      <div className="flex flex-col gap-4">
+        <button
+          onClick={() => { setForgotOpen(false); setForgotStatus("idle"); setForgotEmail(""); setForgotError(""); }}
+          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition w-fit"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Volver
+        </button>
+
+        {forgotStatus === "sent" ? (
+          <div className="flex flex-col items-center gap-3 py-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+              <CheckCircle2 className="w-6 h-6 text-green-600" />
+            </div>
+            <p className="font-semibold text-[#050040]">Revisa tu correo</p>
+            <p className="text-sm text-slate-500">
+              Si <span className="font-medium text-slate-700">{forgotEmail}</span> está registrado,
+              recibirás un enlace para restablecer tu contraseña.
+            </p>
+            <button
+              onClick={() => { setForgotOpen(false); setForgotStatus("idle"); setForgotEmail(""); }}
+              className="mt-2 text-sm font-semibold text-[#050040] hover:underline"
+            >
+              Volver al inicio de sesión
+            </button>
+          </div>
+        ) : (
+          <>
+            <div>
+              <h2 className="text-lg font-semibold text-[#050040]">¿Olvidaste tu contraseña?</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Ingresa tu email y te enviaremos un enlace de recuperación.
+              </p>
+            </div>
+            <form onSubmit={handleForgotPassword} className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Email</label>
+                <input
+                  type="email" required autoComplete="email"
+                  placeholder="tu@empresa.com"
+                  value={forgotEmail}
+                  onChange={(e) => { setForgotEmail(e.target.value); setForgotError(""); }}
+                  className="w-full mt-1.5 px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-[#050040] focus:ring-2 focus:ring-[#050040]/10 transition"
+                />
+              </div>
+
+              {forgotError && (
+                <p className="text-xs text-red-500 text-center">{forgotError}</p>
+              )}
+
+              <button
+                type="submit"
+                disabled={forgotStatus === "loading"}
+                className="w-full rounded-xl bg-[#050040] py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {forgotStatus === "loading" && <Loader2 className="w-4 h-4 animate-spin" />}
+                Enviar enlace de recuperación
+              </button>
+            </form>
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -164,7 +285,13 @@ export default function AuthTabsCard({ defaultTab = "sign-in" }: AuthTabsCardPro
               <div>
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Contraseña</label>
-                  <a href="#" className="text-xs text-[#050040] hover:underline">¿Olvidaste tu contraseña?</a>
+                  <button
+                    type="button"
+                    onClick={() => { setForgotEmail(siEmail); setForgotOpen(true); }}
+                    className="text-xs text-[#050040] hover:underline"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
                 </div>
                 <input
                   type="password" required autoComplete="current-password"
@@ -237,7 +364,7 @@ export default function AuthTabsCard({ defaultTab = "sign-in" }: AuthTabsCardPro
                 <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Contraseña</label>
                 <input
                   type="password" required autoComplete="new-password"
-                  placeholder="Mínimo 8 caracteres"
+                  placeholder="Mín. 8 caracteres, 1 mayúscula, 1 número"
                   value={suPassword} onChange={(e) => setSuPassword(e.target.value)}
                   className={inputClass}
                 />

@@ -28,6 +28,7 @@ export interface JiraIssueInput {
   assigneeId?:  string;   // Atlassian account ID
   labels?:      string[];
   epicKey?:     string;   // Parent epic issue key
+  dueDate?:     string;   // "YYYY-MM-DD"
 }
 
 export interface JiraIssueResult {
@@ -67,6 +68,22 @@ export interface JiraSprint {
   id:    number;
   name:  string;
   state: string;   // "active" | "closed" | "future"
+}
+
+interface JiraCreateMeta {
+  issueTypeId:   string;
+  issueTypeName: string;
+  fieldKeys:     Set<string>;   // field keys available on the project's creation screen
+}
+
+/** Extracts a readable message from a Jira REST API error response body. */
+function extractJiraError(data: unknown): string {
+  const d = data as { errorMessages?: string[]; errors?: Record<string, string> };
+  if (d?.errorMessages?.length) return d.errorMessages.join("; ");
+  if (d?.errors && Object.keys(d.errors).length) {
+    return Object.entries(d.errors).map(([k, v]) => `${k}: ${v}`).join("; ");
+  }
+  return typeof data === "string" ? data : "error desconocido";
 }
 
 // ── Service ────────────────────────────────────────────────────────────────────
@@ -245,8 +262,55 @@ export class JiraService {
     return d.values ?? [];
   }
 
-  /** Create a new issue in Jira. */
-  static async createIssue(userId: string, input: JiraIssueInput): Promise<JiraIssueResult | null> {
+  /**
+   * Resolve a valid issue type for the project and the set of field keys its
+   * creation screen actually accepts, so callers never send a field/type the
+   * project rejects (e.g. localized type names like "Tarea", or a "Priority"
+   * field that team-managed projects often omit from the create screen).
+   * Endpoints (Jira Cloud REST v3, both free on any plan):
+   *   GET /issue/createmeta/{projectKey}/issuetypes
+   *   GET /issue/createmeta/{projectKey}/issuetypes/{issueTypeId}
+   */
+  static async getCreateMeta(
+    userId: string, projectKey: string, preferredType?: string,
+  ): Promise<JiraCreateMeta | null> {
+    const typesRes = await this.request(userId, "GET", `/issue/createmeta/${projectKey}/issuetypes`);
+    if (!typesRes.ok) return null;
+
+    const list = (typesRes.data as { issueTypes?: { id: string; name: string; subtask: boolean }[] })
+      .issueTypes ?? [];
+    if (list.length === 0) return null;
+
+    const pick =
+      list.find((t) => preferredType && t.name.toLowerCase() === preferredType.toLowerCase())
+      ?? list.find((t) => ["task", "tarea"].includes(t.name.toLowerCase()) && !t.subtask)
+      ?? list.find((t) => !t.subtask)
+      ?? list[0];
+
+    const fieldsRes = await this.request(
+      userId, "GET", `/issue/createmeta/${projectKey}/issuetypes/${pick.id}`,
+    );
+    const fields = fieldsRes.ok
+      ? (fieldsRes.data as { fields?: { fieldId: string }[] }).fields ?? []
+      : [];
+
+    return {
+      issueTypeId:   pick.id,
+      issueTypeName: pick.name,
+      fieldKeys:     new Set(fields.map((f) => f.fieldId)),
+    };
+  }
+
+  /**
+   * Create a new issue in Jira. Schema-aware: looks up the project's create
+   * screen via getCreateMeta and only sends fields/issue types the project
+   * actually accepts, instead of assuming "Task" + Priority always exist.
+   */
+  static async createIssue(
+    userId: string, input: JiraIssueInput,
+  ): Promise<{ ok: true; result: JiraIssueResult } | { ok: false; error: string }> {
+    const meta = await this.getCreateMeta(userId, input.projectKey, input.issueType);
+
     // Build ADF (Atlassian Document Format) description
     const descriptionAdf = input.description ? {
       type:    "doc",
@@ -260,29 +324,35 @@ export class JiraService {
     const fields: Record<string, unknown> = {
       project:   { key: input.projectKey },
       summary:   input.summary,
-      issuetype: { name: input.issueType ?? "Task" },
+      issuetype: meta ? { id: meta.issueTypeId } : { name: input.issueType ?? "Task" },
     };
 
-    if (descriptionAdf) fields.description = descriptionAdf;
-    if (input.priority)   fields.priority   = { name: input.priority };
-    if (input.assigneeId) fields.assignee   = { accountId: input.assigneeId };
-    if (input.labels?.length) fields.labels = input.labels;
-    if (input.epicKey)    fields.parent     = { key: input.epicKey };
+    const accepts = (key: string) => !meta || meta.fieldKeys.has(key);
+    if (descriptionAdf && accepts("description")) fields.description = descriptionAdf;
+    if (input.priority   && accepts("priority"))   fields.priority   = { name: input.priority };
+    if (input.assigneeId && accepts("assignee"))   fields.assignee   = { accountId: input.assigneeId };
+    if (input.labels?.length && accepts("labels")) fields.labels     = input.labels;
+    if (input.epicKey    && accepts("parent"))     fields.parent     = { key: input.epicKey };
+    if (input.dueDate    && accepts("duedate"))    fields.duedate    = input.dueDate;
 
-    const { ok, data } = await this.request(userId, "POST", "/issue", { fields });
+    const { ok, data, status } = await this.request(userId, "POST", "/issue", { fields });
 
     if (!ok) {
-      console.error("Jira createIssue failed:", data);
-      return null;
+      const message = extractJiraError(data);
+      console.error("Jira createIssue failed:", status, message);
+      return { ok: false, error: `Jira ${status}: ${message}` };
     }
 
     const d = data as { id: string; key: string; self: string };
     const creds = await this.getCredentials(userId);
     return {
-      id:   d.id,
-      key:  d.key,
-      self: d.self,
-      url:  creds ? `${creds.site_url}/browse/${d.key}` : d.self,
+      ok: true,
+      result: {
+        id:   d.id,
+        key:  d.key,
+        self: d.self,
+        url:  creds ? `${creds.site_url}/browse/${d.key}` : d.self,
+      },
     };
   }
 
@@ -344,7 +414,15 @@ export class JiraService {
     return ok;
   }
 
-  /** Search issues using JQL. */
+  /**
+   * Search issues using JQL.
+   * TODO: POST /rest/api/3/search is on Atlassian's deprecation path in favor
+   * of POST /rest/api/3/search/jql, whose response drops `total` in favor of
+   * `isLast`/`nextPageToken` pagination. Not urgent — searchJql isn't called
+   * from the MeetAction dispatcher today — but migrate before relying on
+   * `total` anywhere new. Verify the current sunset date in Atlassian's docs
+   * before migrating, since it has moved more than once.
+   */
   static async searchJql(userId: string, jql: string, maxResults = 20): Promise<JiraSearchResult> {
     const { ok, data } = await this.request(
       userId, "POST", "/search",

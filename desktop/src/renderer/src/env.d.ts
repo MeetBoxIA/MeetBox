@@ -9,7 +9,8 @@ declare global {
       clearConnection:        () => Promise<void>
       minimizeWindow:         () => void
       closeWindow:            () => void
-      openDashboard:          () => void
+      openDashboard:          (sessionId?: string) => void
+      importRecording:        (filePath?: string) => Promise<{ ok: boolean; jobId?: string; error?: string }>
       getAutoLaunch:          () => Promise<boolean>
       setAutoLaunch:          (enabled: boolean) => Promise<boolean>
       getDesktopAudioSources: () => Promise<AudioSource[]>

@@ -559,8 +559,8 @@ export async function executeTool(ctx: ToolContext, name: string, raw: string): 
           issueType:   args.issueType  ? String(args.issueType)  : undefined,
           priority:    args.priority   ? String(args.priority)   : undefined,
         });
-        if (!result) return err("Failed to create Jira issue. Check that Jira is connected and the project key is correct.");
-        return ok({ created: { key: result.key, url: result.url, id: result.id } });
+        if (!result.ok) return err(result.error);
+        return ok({ created: { key: result.result.key, url: result.result.url, id: result.result.id } });
       }
 
       case "jira_search": {

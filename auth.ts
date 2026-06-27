@@ -27,7 +27,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         otpVerified: { label: "OTP verified", type: "text" },
       },
       async authorize(credentials) {
-        const email       = credentials?.email       as string;
+        const email       = (credentials?.email as string)?.toLowerCase().trim();
         const password    = credentials?.password    as string;
         const otpVerified = credentials?.otpVerified as string;
         if (!email) return null;
@@ -48,11 +48,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
 
         // ── Normal email + password login ──────────────────────────────
+        // Gate by password_hash, not by provider: a user who registered with
+        // email+password and later also linked Google must still be able to
+        // log in manually — only accounts with no password at all (Google-only)
+        // are rejected here.
         const { data: user } = await db
           .from("users")
           .select("id, name, email, password_hash, avatar_url")
           .eq("email", email)
-          .eq("provider", "email") // prevent Google users from logging in with a password
           .single<DbUser>();
         if (!user || !user.password_hash) return null;
 
@@ -68,20 +71,27 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   session: { strategy: "jwt" },
 
   callbacks: {
-    // Upsert the Google user into Supabase on every OAuth sign-in so the
-    // profile (name, avatar) stays fresh if the user updates it in Google.
+    // Link or create the Google user in Supabase on every OAuth sign-in.
+    // If the email already has a row (e.g. registered with email+password),
+    // only the profile (name, avatar) is refreshed — provider and
+    // password_hash are NEVER overwritten, so manual login and password
+    // reset keep working for accounts that also link Google.
     async signIn({ user, account }) {
       if (account?.provider === "google" && user.email) {
-        const db = getSupabase();
-        await db.from("users").upsert(
-          {
-            email:      user.email,
-            name:       user.name  ?? user.email,
-            avatar_url: user.image ?? null,
-            provider:   "google",
-          },
-          { onConflict: "email", ignoreDuplicates: false },
-        );
+        const db    = getSupabase();
+        const email = user.email.toLowerCase();
+
+        const { data: existing } = await db
+          .from("users").select("id").eq("email", email).maybeSingle();
+
+        if (existing) {
+          await db.from("users")
+            .update({ name: user.name ?? email, avatar_url: user.image ?? null })
+            .eq("id", existing.id);
+        } else {
+          await db.from("users")
+            .insert({ email, name: user.name ?? email, avatar_url: user.image ?? null, provider: "google" });
+        }
       }
       return true;
     },

@@ -632,7 +632,7 @@ function ActionCard({ item, onToggle, onEdit }: {
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
-export default function MeetActionView({ workspaceId }: { workspaceId?: string }) {
+export default function MeetActionView({ workspaceId, initialSessionId }: { workspaceId?: string; initialSessionId?: string | null }) {
   const { addNotification } = useNotifications();
   const [mode,      setMode]      = React.useState<Mode | null>(null);
   const [step,      setStep]      = React.useState<WizardStep>(0);
@@ -640,7 +640,7 @@ export default function MeetActionView({ workspaceId }: { workspaceId?: string }
   const [animating, setAnimating] = React.useState(false);
 
   const [sessions,      setSessions]      = React.useState<ApiSession[]>([]);
-  const [selectedId,    setSelectedId]    = React.useState<string | null>(null);
+  const [selectedId,    setSelectedId]    = React.useState<string | null>(initialSessionId ?? null);
   const [rooms,         setRooms]         = React.useState<Room[]>([]);
   const [roomMembers,   setRoomMembers]   = React.useState<RoomMember[]>([]);
   const [matchedPeople, setMatchedPeople] = React.useState<{ person: string; member_name: string }[]>([]);

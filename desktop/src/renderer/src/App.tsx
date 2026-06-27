@@ -112,33 +112,6 @@ export default function App() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [status])
 
-  // ── Live transcript simulation — replace with a real WebSocket/STT service ──
-  // Demo lines are injected every 4s while recording to show the UI working
-  // before a real speech-to-text backend is connected.
-  useEffect(() => {
-    if (status !== 'recording') return
-    const DEMO_LINES: Omit<TranscriptLine, 'id' | 'timestamp'>[] = [
-      { speaker: 'Tú',         text: 'Empezamos con el punto de ventas del Q2…' },
-      { speaker: 'Ana M.',     text: 'Los números están arriba un 12% respecto al mes anterior.' },
-      { speaker: 'Carlos R.',  text: 'Necesitamos revisar la estrategia de pricing.' },
-      { speaker: 'Tú',         text: 'Carlos, ¿puedes preparar un análisis para el viernes?', isTask: true },
-      { speaker: 'Carlos R.',  text: 'Claro, lo tengo listo el jueves.' },
-    ]
-
-    let idx = 0
-    const id = setInterval(() => {
-      if (idx >= DEMO_LINES.length) { clearInterval(id); return }
-      const line = DEMO_LINES[idx]
-      setTranscript((prev) => [
-        ...prev,
-        { ...line, id: `${Date.now()}-${idx}`, timestamp: nowISO() },
-      ])
-      idx++
-    }, 4000)
-
-    return () => clearInterval(id)
-  }, [status])
-
   // ── Captura de audio ────────────────────────────────────────────────────────
   // Graba micrófono + audio del sistema SIN pedir compartir pantalla.
   // El audio del sistema se captura desde el dispositivo "monitor" (PulseAudio/
@@ -456,7 +429,7 @@ export default function App() {
           progress={jobProgress}
           stage={jobStage}
           hasSession={!!jobSessionId}
-          onOpenDashboard={() => window.electronAPI.openDashboard()}
+          onOpenDashboard={() => window.electronAPI.openDashboard(jobSessionId ?? undefined)}
           onDismiss={() => { setUploadState('idle'); setJobStage('') }}
         />
       )}
@@ -480,7 +453,47 @@ export default function App() {
           onShowInFolder={() =>
             savedFilePath && window.electronAPI.showRecordingInFolder(savedFilePath)
           }
-          onOpenDashboard={() => window.electronAPI.openDashboard()}
+          onImport={async (filePath?: string) => {
+            setUploadState('uploading')
+            setJobProgress(0)
+            setJobStage(filePath ? 'Importando grabación…' : 'Seleccionando archivo…')
+            setJobSessionId(null)
+            const result = await window.electronAPI.importRecording(filePath)
+            if (!result.ok) {
+              if (result.error === 'Cancelado') { setUploadState('idle'); return }
+              setUploadState('error')
+              setJobStage(result.error ?? 'Error al importar')
+              return
+            }
+            // Poll job status using the same pipeline as a live recording
+            const conn   = await window.electronAPI.getConnection()
+            const apiUrl = conn?.apiUrl ?? 'http://localhost:3000'
+            const token  = conn?.accessToken
+            if (!token || !result.jobId) { setUploadState('error'); setJobStage('Error al iniciar procesamiento'); return }
+            setUploadState('processing')
+            setJobStage('En cola…')
+            const stageLabels: Record<string, string> = {
+              uploaded: 'En cola…', queued: 'En cola…', transcribing: 'Transcribiendo audio…',
+              analyzing: 'Analizando con IA…', matching_calendar: 'Buscando en calendario…',
+              creating_actions: 'Creando acciones…', completed: 'Procesamiento completado', failed: 'El procesamiento falló',
+            }
+            const deadline = Date.now() + 5 * 60_000
+            const jobId = result.jobId
+            const poll = async (): Promise<void> => {
+              try {
+                const r = await fetch(`${apiUrl}/api/desktop/jobs/${jobId}`, { headers: { Authorization: `Bearer ${token}` } })
+                const s = await r.json().catch(() => ({}))
+                if (r.ok && s.status) {
+                  setJobProgress(s.progress ?? 0)
+                  setJobStage(stageLabels[s.status] ?? s.status)
+                  if (s.status === 'completed') { setUploadState('done'); setJobSessionId(s.session_id ?? null); return }
+                  if (s.status === 'failed')    { setUploadState('error'); setJobStage(s.error ?? 'El procesamiento falló'); return }
+                }
+              } catch { /* transient */ }
+              if (Date.now() < deadline) setTimeout(poll, 2000)
+            }
+            setTimeout(poll, 2000)
+          }}
         />
       )}
     </div>
@@ -498,12 +511,12 @@ interface HomeViewProps {
   onToggleRecording: () => void
   onReset:           () => void
   onShowInFolder:    () => void
-  onOpenDashboard:   () => void
+  onImport:          (filePath?: string) => void
 }
 
 function HomeView({
   status, timerSecs, transcript, savedFilePath, errorMsg, appVersion,
-  onToggleRecording, onReset, onShowInFolder, onOpenDashboard,
+  onToggleRecording, onReset, onShowInFolder, onImport,
 }: HomeViewProps) {
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
@@ -543,7 +556,7 @@ function HomeView({
         appVersion={appVersion}
         onReset={onReset}
         onShowInFolder={onShowInFolder}
-        onOpenDashboard={onOpenDashboard}
+        onImport={onImport}
       />
     </div>
   )
@@ -645,14 +658,14 @@ interface FooterProps {
   savedFilePath: string | null
   errorMsg:      string | null
   appVersion:    string
-  onReset:         () => void
-  onShowInFolder:  () => void
-  onOpenDashboard: () => void
+  onReset:        () => void
+  onShowInFolder: () => void
+  onImport:       (filePath?: string) => void
 }
 
 function Footer({
   status, savedFilePath, errorMsg, appVersion,
-  onReset, onShowInFolder, onOpenDashboard,
+  onReset, onShowInFolder, onImport,
 }: FooterProps) {
   return (
     <div className="border-t border-slate-100 px-5 py-4 flex flex-col gap-3">
@@ -678,7 +691,7 @@ function Footer({
               Ver archivo
             </button>
             <button
-              onClick={onOpenDashboard}
+              onClick={() => onImport(savedFilePath ?? undefined)}
               className="flex-1 text-xs text-white bg-[#050040] rounded-lg py-1.5 hover:bg-slate-800 transition font-semibold"
             >
               Importar al dashboard
@@ -700,12 +713,20 @@ function Footer({
       {/* Links de pie */}
       {status === 'idle' && (
         <div className="flex items-center justify-between">
-          <button
-            onClick={onOpenDashboard}
-            className="text-[10px] text-slate-400 hover:text-[#050040] transition"
-          >
-            Abrir dashboard web →
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => window.electronAPI.openDashboard()}
+              className="text-[10px] text-slate-400 hover:text-[#050040] transition"
+            >
+              Abrir dashboard →
+            </button>
+            <button
+              onClick={() => onImport()}
+              className="text-[10px] text-slate-400 hover:text-[#050040] transition"
+            >
+              Importar grabación
+            </button>
+          </div>
           <span className="text-[10px] text-slate-300">v{appVersion}</span>
         </div>
       )}
