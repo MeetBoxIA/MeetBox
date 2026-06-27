@@ -750,7 +750,14 @@ function RoomDetail({ room, onBack, onEdit, onDelete, hideBack }: {
                                   {m.location && (
                                     <div className="flex items-center gap-1 mt-1.5">
                                       <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                                      <p className="text-xs text-slate-400 truncate">{m.location}</p>
+                                      {m.location.startsWith("http") ? (
+                                        <a href={m.location} target="_blank" rel="noopener noreferrer"
+                                          className="text-xs text-[#050040] hover:underline truncate">
+                                          {m.location}
+                                        </a>
+                                      ) : (
+                                        <p className="text-xs text-slate-400 truncate">{m.location}</p>
+                                      )}
                                     </div>
                                   )}
                                 </div>

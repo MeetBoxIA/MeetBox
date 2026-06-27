@@ -78,6 +78,7 @@ function getZoomUserId(): string {
 async function createZoomMeeting(
   _userId: string,
   item: Record<string, unknown>,
+  meetingName?: string | null,
 ): Promise<{ ok: boolean; meetingId?: string; joinUrl?: string; error?: string }> {
   let accessToken: string;
   try {
@@ -93,6 +94,9 @@ async function createZoomMeeting(
     return { ok: false, error: (e as Error).message };
   }
 
+  const topic   = meetingName ?? String(item.title ?? "Reunión de MeetBox");
+  const agenda  = String(item.title ?? "") + (item.description ? `\n\n${item.description}` : "");
+
   const res = await fetch(`https://api.zoom.us/v2/users/${zoomUserId}/meetings`, {
     method: "POST",
     headers: {
@@ -100,10 +104,10 @@ async function createZoomMeeting(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      topic:    String(item.title ?? "Reunión de MeetBox"),
+      topic,
       type:     2,
       duration: 60,
-      agenda:   String(item.description ?? ""),
+      agenda,
       settings: { join_before_host: true, waiting_room: false },
     }),
   });
@@ -135,7 +139,9 @@ function pickDatabase(dbs: NotionDatabase[]): NotionDatabase {
 // Dispatcher — routes each action item to its destination service
 async function dispatchItem(
   userId: string,
+  roomId: string | null,
   item: Record<string, unknown>,
+  meetingName?: string | null,
 ): Promise<{ ok: boolean; external_id?: string; external_url?: string; error?: string }> {
   switch (item.destination) {
     case "slack": {
@@ -195,14 +201,14 @@ async function dispatchItem(
       return { ok: true, external_id: created.result.key, external_url: created.result.url };
     }
     case "zoom": {
-      const result = await createZoomMeeting(userId, item);
+      const result = await createZoomMeeting(userId, item, meetingName);
       if (!result.ok) return { ok: false, error: result.error };
-      // Also create a calendar event so the meeting appears in MeetCalendar
-      await createCalendarEvent(userId, item, result.joinUrl);
+      // Also create a calendar event linked to the workspace so it appears in the Rooms timeline
+      await createCalendarEvent(userId, roomId, item, result.joinUrl);
       return { ok: true, external_id: result.meetingId, external_url: result.joinUrl };
     }
     case "meetcalendar": {
-      const calId = await createCalendarEvent(userId, item, null);
+      const calId = await createCalendarEvent(userId, roomId, item, null);
       return { ok: true, external_id: calId ?? `cal-${Date.now()}`, external_url: "/dashboard?section=meetcalendar" };
     }
     case "meetbook": {
@@ -260,6 +266,7 @@ async function dispatchItem(
 /** Create a calendar event in the user's MeetCalendar starting now. */
 async function createCalendarEvent(
   userId: string,
+  roomId: string | null,
   item: Record<string, unknown>,
   joinUrl: string | null | undefined,
 ): Promise<string | null> {
@@ -279,7 +286,7 @@ async function createCalendarEvent(
     color:          "#050040",
     notify_email:   false,
     notify_minutes: 15,
-    room_id:        null,
+    room_id:        roomId,
     google_event_id: null,
     recurrence_freq:  null,
     recurrence_days:  null,
@@ -353,9 +360,12 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   // Verify ownership
   const { data: meetSession } = await db
-    .from("meet_action_sessions").select("id, status")
+    .from("meet_action_sessions").select("id, status, room_id, meeting_name")
     .eq("id", id).eq("user_id", userId).single();
   if (!meetSession) return NextResponse.json({ error: "Sesión no encontrada" }, { status: 404 });
+  const s = meetSession as { room_id: string | null; meeting_name: string | null };
+  const sessionRoomId = s.room_id ?? null;
+  const sessionMeetingName = s.meeting_name ?? null;
 
   // Get all approved items
   const { data: items } = await db
@@ -401,12 +411,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       .update({ status: "executing", updated_at: new Date().toISOString() })
       .eq("id", item.id);
 
-    let result: { ok: boolean; external_id?: string; external_url?: string; error?: string };
-    try {
-      result = await dispatchItem(userId, item as Record<string, unknown>);
-    } catch (e) {
-      result = { ok: false, error: e instanceof Error ? e.message : "Error inesperado al ejecutar el ítem" };
-    }
+    const result = await dispatchItem(userId, sessionRoomId, item as Record<string, unknown>, sessionMeetingName);
 
     if (result.ok) {
       executedCount++;
