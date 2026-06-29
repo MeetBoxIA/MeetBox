@@ -72,30 +72,16 @@ export default function PricingSection() {
     setTimeout(() => setAlert(null), 5000);
   }
 
-  const handlePayment = async (planId: string, title: string, unitPrice: number) => {
+  const handlePayment = (planId: string, title: string) => {
     if (!session) {
       showAlert('Debes registrarte para proceder a la pasarela de pago', 'info');
       setTimeout(() => router.push('/auth?tab=sign-up'), 2000);
       return;
     }
-    try {
-      setLoadingPlan(planId);
-      const response = await fetch('/api/payments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId, title, unitPrice }),
-      });
-      const data = await response.json();
-      if (data.initPoint) {
-        window.location.href = data.initPoint;
-      } else {
-        showAlert('Hubo un error en el proceso de pago', 'error');
-      }
-    } catch {
-      showAlert('Hubo un error en el proceso de pago', 'error');
-    } finally {
-      setLoadingPlan(null);
-    }
+    setLoadingPlan(planId);
+    localStorage.setItem('meetbox_plan', JSON.stringify({ id: planId, name: title }));
+    window.open('https://www.mercadopago.com.co/home', '_blank');
+    setLoadingPlan(null);
   };
 
   return (
@@ -188,7 +174,7 @@ export default function PricingSection() {
 
               <button
                 disabled={loadingPlan === plan.planId}
-                onClick={() => handlePayment(plan.planId, plan.name, plan.unitPrice)}
+                onClick={() => handlePayment(plan.planId, plan.name)}
                 className="w-full py-3.5 rounded-full text-sm font-semibold transition-all duration-300 bg-[#050040] text-white group-hover:bg-white group-hover:text-[#050040] disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {loadingPlan === plan.planId ? 'Procesando...' : plan.cta}

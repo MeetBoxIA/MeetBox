@@ -61,7 +61,7 @@ export default function ProductsSection() {
       });
       const data = await response.json();
       if (data.initPoint) {
-        window.location.href = data.initPoint;
+        window.open(data.initPoint, '_blank');
       } else {
         showAlert('Hubo un error en el proceso de pago', 'error');
       }
