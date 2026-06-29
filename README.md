@@ -282,6 +282,8 @@ The `desktop/` folder contains a standalone **Electron + Vite + React** applicat
 
 Tokens can be regenerated or revoked at any time from the Integrations page; revoking immediately invalidates the previous session.
 
+> **The recorder does not persist the session across restarts:** every time you open MeetBox Desktop you must paste a fresh connection code from Integrations. This guarantees recordings are always linked to the account you intend right now, not to a previously linked one. To switch accounts without restarting, use **Disconnect account** in Settings.
+
 ### Desktop Development
 
 ```bash

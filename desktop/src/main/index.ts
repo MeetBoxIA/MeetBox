@@ -486,6 +486,19 @@ app.whenReady().then(() => {
   // 1. Registrar todos los IPC handlers PRIMERO
   registerIpcHandlers()
 
+  // 1.5. Forzar vinculación en cada arranque: se borra cualquier conexión
+  // persistida para que el grabador SIEMPRE inicie en ConnectScreen y el usuario
+  // pegue un código MBOX nuevo. Así las grabaciones quedan vinculadas a la cuenta
+  // que el usuario quiere ahora, no a la de una sesión anterior. (connection.json
+  // se vuelve a guardar al conectar y se usa durante la sesión para las subidas;
+  // se elimina otra vez en el siguiente arranque.)
+  try {
+    const f = connectionFile()
+    if (fs.existsSync(f)) fs.unlinkSync(f)
+  } catch (err) {
+    console.warn('No se pudo limpiar la conexión persistida al arrancar:', err)
+  }
+
   // 2. Permisos de audio/micrófono
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(['media', 'audioCapture', 'microphone', 'mediaKeySystem'].includes(permission))

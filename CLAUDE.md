@@ -224,7 +224,7 @@ Separate Node package at `desktop/`. Captures audio from video calls without bot
 ### Connection Flow
 1. User generates **MBOX token** from web app `/integrations`
 2. Pastes token into Desktop app → connects via `POST /api/auth/desktop/connect`
-3. Desktop stores encrypted token locally, re-authenticates with `POST /api/auth/desktop/validate`
+3. Desktop uses the token for the current session only — it is **not persisted across restarts** (the main process wipes `connection.json` on every launch), so the user must paste a fresh code each time the app opens, ensuring recordings link to the intended account
 4. Desktop can upload recordings to `POST /api/desktop/upload`
 
 ### Structure
