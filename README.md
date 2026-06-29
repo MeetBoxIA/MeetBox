@@ -142,6 +142,8 @@ MeetBox/
 - Google OAuth credentials _(optional — only needed for Google sign-in)_
 - A [Brevo](https://www.brevo.com/) account _(optional — without an email provider, OTP/reset codes print to the terminal in development)_
 
+> **About `--legacy-peer-deps`:** the project depends on `nodemailer@8`, but `next-auth@5.0.0-beta.31` (via `@auth/core`) declares a peer dependency on `nodemailer@^7`. `nodemailer@8` is backwards-compatible with the `@7` API surface the code actually uses, so installing with `--legacy-peer-deps` (which skips the unmet peer-dependency check) is safe. This applies to **both** the root project and `desktop/`.
+
 ### Environment Variables
 
 Create a `.env.local` file at the project root with the following variables:
@@ -236,8 +238,8 @@ All SQL files live in `supabase/` and are idempotent (`CREATE TABLE IF NOT EXIST
 git clone https://github.com/MeetBoxIA/MeetBox.git
 cd MeetBox
 
-# 2. Install dependencies
-npm install
+# 2. Install dependencies (--legacy-peer-deps required, see note above)
+npm install --legacy-peer-deps
 
 # 3. Configure environment
 # Create .env.local and fill in the values from the section above
@@ -284,7 +286,7 @@ Tokens can be regenerated or revoked at any time from the Integrations page; rev
 
 ```bash
 cd desktop
-npm install
+npm install --legacy-peer-deps
 
 # Development (hot-reload)
 npm run dev
