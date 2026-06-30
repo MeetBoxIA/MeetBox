@@ -13,6 +13,7 @@ build/
 
 # Bun
 bun.lockb
+bun.lock
 .bun/
 
 # Environment variables — NUNCA subir

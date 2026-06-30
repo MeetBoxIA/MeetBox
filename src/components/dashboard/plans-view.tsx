@@ -76,30 +76,15 @@ export default function PlansView({ onBack }: { onBack: () => void }) {
   const [loadingPlan, setLoadingPlan] = React.useState<string | null>(null);
   const [error,       setError]       = React.useState<string | null>(null);
 
-  // Calls /api/payments → Mercado Pago init_point → redirect.
-  async function handleUpgrade(planId: string, title: string, unitPrice: number) {
+  // Redirects straight to Mercado Pago.
+  function handleUpgrade(planId: string, title: string) {
     setError(null);
     setLoadingPlan(planId);
-    try {
-      const res = await fetch("/api/payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId, title, unitPrice }),
-      });
-      const data = await res.json();
-      if (data.initPoint) {
-        // Remember the chosen plan so SettingsAccount can display it after the
-        // Mercado Pago redirect (until real subscriptions land in the DB).
-        localStorage.setItem("meetbox_plan", JSON.stringify({ id: planId, name: title }));
-        window.location.href = data.initPoint;   // off to Mercado Pago
-      } else {
-        setError(data.error ?? (locale === "en" ? "Could not start checkout. Try again." : "No se pudo iniciar el pago. Intenta de nuevo."));
-        setLoadingPlan(null);
-      }
-    } catch {
-      setError(locale === "en" ? "Connection error. Try again." : "Error de conexión. Intenta de nuevo.");
-      setLoadingPlan(null);
-    }
+    // Remember the chosen plan so SettingsAccount can display it after the
+    // Mercado Pago redirect (until real subscriptions land in the DB).
+    localStorage.setItem("meetbox_plan", JSON.stringify({ id: planId, name: title }));
+    window.open("https://www.mercadopago.com.co/home", "_blank");
+    setLoadingPlan(null);
   }
 
   return (
@@ -172,7 +157,7 @@ export default function PlansView({ onBack }: { onBack: () => void }) {
               </ul>
 
               <button
-                onClick={() => handleUpgrade(plan.id, plan.name, plan.unitPrice)}
+                onClick={() => handleUpgrade(plan.id, plan.name)}
                 disabled={isLoading}
                 className={cn(
                   "w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-60",
