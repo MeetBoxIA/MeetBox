@@ -1,0 +1,56 @@
+name: Build & Release Desktop App
+
+on:
+  push:
+    tags:
+      - "desktop-v*"          # Ejemplo: git tag desktop-v1.0.0 && git push --tags
+  workflow_dispatch:           # También se puede lanzar manualmente desde GitHub Actions
+
+permissions:
+  contents: write              # Necesario para crear GitHub Releases
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            artifact: "MeetBox Desktop Setup*.exe"
+          - os: macos-latest
+            platform: mac
+            artifact: "MeetBox Desktop*.dmg"
+          - os: ubuntu-latest
+            platform: linux
+            artifact: "MeetBox Desktop*.AppImage"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build & package (${{ matrix.platform }})
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false      # skip code signing
+        run: npm run package:${{ matrix.platform }} -- --publish always
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: meetbox-desktop-${{ matrix.platform }}
+          path: desktop/dist/${{ matrix.artifact }}
+          retention-days: 7

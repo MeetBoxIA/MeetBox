@@ -1,0 +1,22 @@
+{
+  "name": "MeetBox",
+  "short_name": "MeetBox",
+  "description": "Transcripción y resúmenes de reuniones en tiempo real. Graba, resume y gestiona tus reuniones.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#050040",
+  "theme_color": "#050040",
+  "orientation": "any",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["productivity", "business"],
+  "prefer_related_applications": false
+}

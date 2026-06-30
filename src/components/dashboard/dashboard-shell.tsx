@@ -1366,9 +1366,7 @@ function DesktopTokenCard() {
           <p className="text-xs text-slate-400 mt-0.5">{t("desktop_desc")}</p>
         </div>
         <a
-          href="https://meetbox.io/desktop"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="/desktop"
           className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
         >
           <Download className="w-3.5 h-3.5" />

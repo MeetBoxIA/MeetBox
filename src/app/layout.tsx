@@ -8,6 +8,12 @@ export const metadata: Metadata = {
   title: "MeetBox",
   description: "Transcripción y resúmenes de reuniones en tiempo real. Presencial o virtual, sin perder un acuerdo.",
   icons: { icon: "/favicon.svg" },
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "MeetBox",
+  },
 };
 
 export default function RootLayout({

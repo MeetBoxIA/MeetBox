@@ -13,13 +13,10 @@ files:
 
 # ── Windows ────────────────────────────────────────────────────────────────────
 win:
-  icon: build/icon.ico
   target:
     - target: nsis
-      arch: [x64, ia32]
-  # Nivel de ejecución (sin elevación de admin)
+      arch: [x64]
   requestedExecutionLevel: asInvoker
-  # Registro de protocolo deep-link meetbox://
   protocols:
     - name: MeetBox Protocol
       schemes: [meetbox]
@@ -31,11 +28,9 @@ nsis:
   createDesktopShortcut: always
   createStartMenuShortcut: true
   shortcutName: MeetBox Desktop
-  # El instalador NSIS pregunta al usuario dónde instalar
 
 # ── macOS ──────────────────────────────────────────────────────────────────────
 mac:
-  icon: build/icon.icns
   category: public.app-category.productivity
   hardenedRuntime: true
   gatekeeperAssess: false
@@ -62,7 +57,6 @@ dmg:
 
 # ── Linux ──────────────────────────────────────────────────────────────────────
 linux:
-  icon: build/icon.png
   target: AppImage
   category: Office
 
